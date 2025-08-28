@@ -1,72 +1,51 @@
 #include <Arduino.h>
-#include <Wire.h>
-#include <Adafruit_Sensor.h>
-#include <Adafruit_BNO055.h>
-#include <utility/imumaths.h>
+#include "9axis.h"
 
-// Create an instance of the BNO055 sensor
-// The default I2C address is 0x28, but can also be 0x29
-Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+// How often to print data to serial (in milliseconds)
+#define PRINT_DELAY 500
 
-void setup(void) {
-  // Start the serial communication for debugging
+void setup() {
+  // Start serial communication for debugging
   Serial.begin(115200);
-  while (!Serial); // wait for serial port to connect. Needed for native USB
-  Serial.println("BNO055 Test");
-  Serial.println("");
+  while (!Serial) {
+    delay(10); // wait for serial port to connect. Needed for native USB
+  }
+  Serial.println("## BNO055 Data Example ##");
 
   // Initialize the BNO055 sensor
-  if (!bno.begin()) {
-    Serial.print("No BNO055 detected ... Check your wiring or I2C ADDR!");
-    while (1);
+  if (setupBno()) {
+    Serial.println("BNO055 sensor initialized successfully!");
+  } else {
+    Serial.println("BNO055 sensor initialization failed. Check wiring.");
+    // You might want to halt execution here if the sensor is critical
+    while (1) {
+      delay(1000);
+    }
   }
-
-  // Optional: Display some basic information about the sensor
-  sensor_t sensor;
-  bno.getSensor(&sensor);
-  Serial.println("------------------------------------");
-  Serial.print("Sensor:       "); Serial.println(sensor.name);
-  Serial.print("Driver Ver:   "); Serial.println(sensor.version);
-  Serial.print("Unique ID:    "); Serial.println(sensor.sensor_id);
-  Serial.println("------------------------------------");
-
-  delay(1000);
-
-  // Set the sensor to operate in NDOF (Nine Degrees of Freedom) mode
-  // This mode fuses accelerometer, gyroscope, and magnetometer data
-  bno.setExtCrystalUse(true);
 }
 
-void loop(void) {
-  // Request the orientation data (Euler angles)
-  sensors_event_t event;
-  bno.getEvent(&event);
+void loop() {
+  // Update the sensor data in every loop
+  updateBnoData();
 
-  // Print the Euler angles (orientation)
-  // event.orientation.x is the heading
-  // event.orientation.y is the roll
-  // event.orientation.z is the pitch
-  Serial.print("Heading (X): ");
-  Serial.print(event.orientation.x, 2); // Print with 2 decimal places
-  Serial.print("\t  Roll (Y): ");
-  Serial.print(event.orientation.y, 2);
-  Serial.print("\t  Pitch (Z): ");
-  Serial.println(event.orientation.z, 2);
+  // Get the latest data
+  BnoData data = getBnoData();
 
-  // Get and display the calibration status
-  uint8_t system, gyro, accel, mag;
-  system = gyro = accel = mag = 0;
-  bno.getCalibration(&system, &gyro, &accel, &mag);
-  
-  Serial.print("Calibration: Sys=");
-  Serial.print(system, DEC);
-  Serial.print(" Gyro=");
-  Serial.print(gyro, DEC);
-  Serial.print(" Accel=");
-  Serial.print(accel, DEC);
-  Serial.print(" Mag=");
-  Serial.println(mag, DEC);
+  // Print the data
+  Serial.print("Heading: ");
+  Serial.print(data.heading);
+  Serial.print(" | Roll: ");
+  Serial.print(data.roll);
+  Serial.print(" | Pitch: ");
+  Serial.print(data.pitch);
 
-  // A small delay before the next reading
-  delay(100);
+  Serial.print(" || LinAccel X: ");
+  Serial.print(data.linearAccelX);
+  Serial.print(" Y: ");
+  Serial.print(data.linearAccelY);
+  Serial.print(" Z: ");
+  Serial.println(data.linearAccelZ);
+
+  // Wait a bit before printing again
+  delay(PRINT_DELAY);
 }
