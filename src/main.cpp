@@ -1,14 +1,18 @@
 #include <Arduino.h>
 #include "gps.h"
 
+bool gpsDetected = false;
+
 void setup() {
+  delay(2000); // Give some time for the Serial monitor to start
   Serial.begin(9600);
-  // Set your GPS module's TX and RX pins here (example: TX=4, RX=3)
-  setupGps(4, 3);
+  setupGps(12, 13);
+  Serial.println("Starting GPS test...");
 }
 
 void loop() {
   if (updateGps()) {
+    gpsDetected = true;
     GpsData data = getGpsData();
     if (data.hasFix) {
       Serial.print("Lat: ");
@@ -24,6 +28,11 @@ void loop() {
     } else {
       Serial.println("No GPS fix.");
     }
+  } else {
+    if (!gpsDetected) {
+      Serial.println("Waiting for GPS data... (Is GPS module connected?)");
+      delay(2000); // Print every 2 seconds if not detected
+    }
   }
-  delay(1000); // Print every second
+  delay(1000);
 }

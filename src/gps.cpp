@@ -1,11 +1,11 @@
 #include "gps.h"
 #include <Arduino.h>
-#include <SoftwareSerial.h>
+#include <HardwareSerial.h>
 #include <TinyGPS++.h>
 
 // The serial connection to the GPS module
 // We use static to keep these variables private to this file.
-static SoftwareSerial gpsSerial;
+static HardwareSerial* gpsSerial = nullptr; // Will be initialized in setupGps
 
 // The TinyGPS++ object that parses GPS data
 static TinyGPSPlus gps;
@@ -18,16 +18,23 @@ static const uint32_t GPS_BAUD_RATE = 9600;
 
 // Implementation of the setupGps function
 void setupGps(int txPin, int rxPin) {
-  // Note: The SoftwareSerial constructor needs Rx, Tx pin order.
-  gpsSerial = SoftwareSerial(rxPin, txPin);
-  gpsSerial.begin(GPS_BAUD_RATE);
+  // For ESP32, use HardwareSerial. SERIAL_8N1 is the default config.
+  int serialnum = 1; // Default to Serial1 (Pin 9/10)
+  // Check pin combinations to determine which HardwareSerial to use
+  if ((txPin == 1 && rxPin == 3) || (txPin == 3 && rxPin == 1)) {
+    serialnum = 0; // Serial0 (USB serial)
+  } else if ((txPin == 17 && rxPin == 16) || (txPin == 16 && rxPin == 17)) {
+    serialnum = 2; // Serial2
+  }
+  // Serial1 uses pins 9/10 by default, so keep serialnum = 1 for other combinations
+  gpsSerial = new HardwareSerial(serialnum);
+  gpsSerial->begin(GPS_BAUD_RATE, SERIAL_8N1, rxPin, txPin);
 }
-
 // Implementation of the updateGps function
 bool updateGps() {
   // Read all available characters from the GPS serial port
-  while (gpsSerial.available() > 0) {
-    gps.encode(gpsSerial.read());
+  while (gpsSerial->available() > 0) {
+    gps.encode(gpsSerial->read());
   }
 
   // TinyGPS++ updates its internal state with every character.
