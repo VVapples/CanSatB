@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include "all.h"
+#include "ultrasonic.h"
 
 //pins SETLATER
 #define GPS_RX_PIN 16
@@ -8,22 +8,28 @@
 #define ULTRASONIC_TRIGGER_PIN 18
 #define ULTRASONIC_ECHO_PIN 19
 
-// put function declarations here:
-int myFunction(int, int);
-
 void setup() {
   //Serial w/ pc
   Serial.begin(115200);
-
-  //scr
+  Serial.println("Starting ultrasonic sensor test...");
   
+  // Initialize ultrasonic sensor
+  setupUltrasonic(ULTRASONIC_TRIGGER_PIN, ULTRASONIC_ECHO_PIN);
+  
+  delay(1000); // Give sensor time to stabilize
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
+  // Get distance measurement
+  float distance = getDistanceCm();
+  
+  if (distance == -1.0) {
+    Serial.println("Ultrasonic: No echo received (timeout)");
+  } else {
+    Serial.print("Distance: ");
+    Serial.print(distance);
+    Serial.println(" cm");
+  }
 
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+  delay(500); // Take readings every 500ms
 }
