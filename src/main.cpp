@@ -1,29 +1,29 @@
 #include <Arduino.h>
-#include "all.h"
-
-//pins SETLATER
-#define GPS_RX_PIN 16
-#define GPS_TX_PIN 17
-#define GPS_COMMS_CONFIG SERIAL_8N1
-#define ULTRASONIC_TRIGGER_PIN 18
-#define ULTRASONIC_ECHO_PIN 19
-
-// put function declarations here:
-int myFunction(int, int);
+#include "gps.h"
 
 void setup() {
-  //Serial w/ pc
-  Serial.begin(115200);
-
-  //scr
-  
+  Serial.begin(9600);
+  // Set your GPS module's TX and RX pins here (example: TX=4, RX=3)
+  setupGps(4, 3);
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+  if (updateGps()) {
+    GpsData data = getGpsData();
+    if (data.hasFix) {
+      Serial.print("Lat: ");
+      Serial.print(data.latitude, 6);
+      Serial.print(", Lon: ");
+      Serial.print(data.longitude, 6);
+      Serial.print(", Alt: ");
+      Serial.print(data.altitude, 2);
+      Serial.print("m, Sats: ");
+      Serial.print(data.satelliteCount);
+      Serial.print(", HDOP: ");
+      Serial.println(data.hdop, 2);
+    } else {
+      Serial.println("No GPS fix.");
+    }
+  }
+  delay(1000); // Print every second
 }
