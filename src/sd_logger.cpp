@@ -1,0 +1,68 @@
+#include "sd_logger.h"
+#include "SD.h"
+#include "SPI.h"
+
+// A private (static) variable to store the path of the current flight directory
+static String flightDir;
+// A flag to ensure we don't try to write data if the SD card failed to start
+static bool sdInitialized = false;
+
+bool setupSdLogger(int csPin) {
+  if (!SD.begin(csPin)) {
+    Serial.println("## SD Card initialization failed!");
+    sdInitialized = false;
+    return false;
+  }
+
+  // Find the next available flight directory number
+  for (int i = 0; i < 1000; i++) {
+    char dirName[15];
+    // Formats the name to "/FLIGHT_000", "/FLIGHT_001", etc.
+    sprintf(dirName, "/FLIGHT_%03d", i);
+
+    if (!SD.exists(dirName)) {
+      // Create the new directory
+      if (SD.mkdir(dirName)) {
+        flightDir = String(dirName);
+        Serial.print("Successfully created logging directory: ");
+        Serial.println(flightDir);
+        sdInitialized = true;
+        return true;
+      } else {
+        Serial.println("## Failed to create directory!");
+        sdInitialized = false;
+        return false;
+      }
+    }
+  }
+
+  // If all 1000 folders are full (highly unlikely)
+  Serial.println("## Could not create a new flight directory.");
+  sdInitialized = false;
+  return false;
+}
+
+void writeToLog(const String& filename, const String& data) {
+  // Guard clause: Do not attempt to write if the SD card isn't ready.
+  if (!sdInitialized) {
+    return;
+  }
+
+  // Combine the flight directory and filename to get the full path
+  String filePath = flightDir + "/" + filename;
+
+  // Open the file in "append" mode. This creates the file if it doesn't
+  // exist and moves the cursor to the end.
+  File logFile = SD.open(filePath, FILE_APPEND);
+
+  if (logFile) {
+    // If the file opened successfully, write the data.
+    logFile.println(data);
+    // Close the file to save the data and prevent corruption.
+    logFile.close();
+  } else {
+    // If the file failed to open, print an error.
+    Serial.print("## Failed to open: ");
+    Serial.println(filePath);
+  }
+}
