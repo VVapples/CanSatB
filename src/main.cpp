@@ -1,29 +1,28 @@
 #include <Arduino.h>
-#include "all.h"
+#include "9axis.h"
+#include "gps.h"
+#include "sd_logger.h"
+#include "ultrasonic.h"
 
-//pins SETLATER
-#define GPS_RX_PIN 16
-#define GPS_TX_PIN 17
-#define GPS_COMMS_CONFIG SERIAL_8N1
-#define ULTRASONIC_TRIGGER_PIN 18
-#define ULTRASONIC_ECHO_PIN 19
 
-// put function declarations here:
-int myFunction(int, int);
+//pins: all in gpio pin numbers
+#define GPS_RX_PIN 10
+#define GPS_TX_PIN 9
+#define ULTRASONIC_TRIGGER_PIN 1
+#define ULTRASONIC_ECHO_PIN 3
+#define SD_CD_PIN 5
+#define SD_CMD_PIN 23
+#define SD_CLK_PIN 18
+#define SD_DATA0_PIN 19
+#define Motor_AIN1_PIN nullptr //setlater
+#define Motor_AIN2_PIN nullptr //setlater
+#define Motor_BIN1_PIN nullptr //setlater
+#define Motor_BIN2_PIN nullptr //setlater
 
 void setup() {
-  //Serial w/ pc
-  Serial.begin(115200);
 
-  //scr
-  
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+  
 }
