@@ -18,30 +18,69 @@
 #define Motor_AIN2_PIN nullptr //setlater
 #define Motor_BIN1_PIN nullptr //setlater
 #define Motor_BIN2_PIN nullptr //setlater
+#define LED_PIN nullptr //setlater
+
+//important variables
+static String state = "";
+static String state_description = "System is initializing";
 
 void setup() {
-  Serial.begin(115200);
-  if (!setupSdLogger(SD_CD_PIN)) {
-    Serial.println("SD card initialization failed!");
-    return;
-  }
-  Serial.println("SD card initialized successfully.");
+  state = "setup";
 
-  // Write headers for the log files
-  writeLogHeaders("gps.csv", "Time,Latitude,Longitude");
-  writeLogHeaders("ultrasonic.csv", "Time,Distance");
+  //SDcard setup : if failed ed with s
+  setupSdLogger(SD_CD_PIN);
+  if (!setupSdLogger(SD_CD_PIN)) {
+    state = "error";
+    state_description = "SD Card initialization failed!";
+    writeToLog("system.csv", String(millis()) + ",SYSTEM,INIT_FAILED,-1,SD Card initialization failed!");
+    while (true) {
+      // Stay here forever if SD card fails to initialize
+      delay(1000);
+    }
+  }
+
+  //other sensor setups
+  setupGps(GPS_TX_PIN, GPS_RX_PIN);
+  setupUltrasonic(ULTRASONIC_TRIGGER_PIN, ULTRASONIC_ECHO_PIN);
+  setupMpu9250();
+  if (!setupMpu9250()) {
+    state = "error";
+    state_description = "MPU9250 initialization failed!";
+    writeToLog("system.csv", String(millis()) + ",MPU9250,INIT_FAILED,-1,MPU9250 initialization failed!");
+    while (true) {
+      // Stay here forever if MPU9250 fails to initialize
+      delay(1000);
+    }
+  }
+  if (!setupGps(GPS_TX_PIN, GPS_RX_PIN)) {
+    state = "error";
+    state_description = "GPS initialization failed!";
+    writeToLog("system.csv", String(millis()) + ",GPS,INIT_FAILED,-1,GPS initialization failed!");
+    while (true) {
+      // Stay here forever if GPS fails to initialize
+      delay(1000);
+    }
+  }
+  if (!setupUltrasonic(ULTRASONIC_TRIGGER_PIN, ULTRASONIC_ECHO_PIN)) {
+    state = "error";
+    state_description = "Ultrasonic sensor initialization failed!";
+    writeToLog("system.csv", String(millis()) + ",ULTRASONIC,INIT_FAILED,-1,Ultrasonic sensor initialization failed!");
+    while (true) {
+      // Stay here forever if Ultrasonic sensor fails to initialize
+      delay(1000);
+    }
+  }
 }
 
 void loop() {
-  // Example data to log
-  String gpsData = "1234567890,37.7749,-122.4194";
-  String ultrasonicData = "1234567890,150";
+  state = "running";
+  // Update sensor data
+  updateMpu9250Data();
+  updateGps();
+  float distance = getDistanceCm();
 
-  // Write GPS data to log
-  writeToLog("gps.csv", gpsData);
+  // logs are made within other codes indivisulally
+  // no need to log here
 
-  // Write Ultrasonic data to log
-  writeToLog("ultrasonic.csv", ultrasonicData);
-
-  delay(1000);  // Log data every second
+  delay(100); // Adjust delay as needed for your application
 }

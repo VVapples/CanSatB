@@ -8,6 +8,10 @@ static int echoPin_local;
 static bool ultrasonicInitialized = false;
 
 bool setupUltrasonic(int trigPin, int echoPin) {
+  // Initialize log headers
+  writeLogHeaders("ultrasonic_data.csv", "Timestamp,Distance_cm,Duration_us,Status");
+  writeLogHeaders("system.csv", "Timestamp,Component,Event,Status,Details");
+  
   trigPin_local = trigPin;
   echoPin_local = echoPin;
   pinMode(trigPin_local, OUTPUT);
@@ -17,8 +21,9 @@ bool setupUltrasonic(int trigPin, int echoPin) {
   ultrasonicInitialized = true;
   
   // Log the initialization status
-  String logData = "Ultrasonic Sensor,Initialized,TrigPin:" + String(trigPin) + ",EchoPin:" + String(echoPin);
-  writeToLog("ultrasonic.csv", logData);
+  String initMsg = "Ultrasonic sensor initialized (TrigPin:" + String(trigPin) + ", EchoPin:" + String(echoPin) + ")";
+  String logEntry = String(millis()) + ",ULTRASONIC,INIT_SUCCESS,0," + initMsg;
+  writeToLog("system.csv", logEntry);
   
   return true;
 }
@@ -27,7 +32,8 @@ float getDistanceCm() {
   // Check if the sensor was properly initialized
   if (!ultrasonicInitialized) {
     // Log the failed attempt to use uninitialized sensor
-    writeToLog("ultrasonic.csv", "Ultrasonic Sensor,Error,Attempted use without initialization");
+    String logEntry = String(millis()) + ",ULTRASONIC,ERROR,1,Attempted use without initialization";
+    writeToLog("system.csv", logEntry);
     return -1.0; // Return error value
   }
 
@@ -52,8 +58,15 @@ float getDistanceCm() {
   float distance = (duration_us * 0.0343) / 2.0;
 
   if (duration_us == 0) {
+    // Log timeout
+    String dataEntry = String(millis()) + ",-1,0,TIMEOUT";
+    writeToLog("ultrasonic_data.csv", dataEntry);
     return -1.0; // Return -1.0 to indicate a timeout (no echo received)
   }
+
+  // Log successful measurement
+  String dataEntry = String(millis()) + "," + String(distance, 2) + "," + String(duration_us) + ",OK";
+  writeToLog("ultrasonic_data.csv", dataEntry);
 
   return distance;
 }

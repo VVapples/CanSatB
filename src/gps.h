@@ -23,8 +23,9 @@ struct GpsData {
  * @brief Initializes the serial communication with the GPS module.
  * @param txPin The microcontroller pin that sends data TO the GPS RX pin.
  * @param rxPin The microcontroller pin that receives data FROM the GPS TX pin.
+ * @return true if GPS initialization was successful, false otherwise.
  */
-void setupGps(int txPin, int rxPin);
+bool setupGps(int txPin, int rxPin);
 
 /**
  * @brief Reads data from the GPS module and parses it.

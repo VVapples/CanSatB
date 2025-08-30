@@ -18,7 +18,19 @@ static GpsData currentGpsData;
 static const uint32_t GPS_BAUD_RATE = 9600;
 
 // Implementation of the setupGps function
-void setupGps(int txPin, int rxPin) {
+bool setupGps(int txPin, int rxPin) {
+  // Initialize log headers
+  writeLogHeaders("gps_data.csv", "Timestamp,HasFix,Latitude,Longitude,Altitude,SatelliteCount,HDOP");
+  writeLogHeaders("system.csv", "Timestamp,Component,Event,Status,Details");
+  
+  // Validate pin numbers (basic check for ESP32)
+  if (txPin < 0 || txPin > 39 || rxPin < 0 || rxPin > 39) {
+    String errorMsg = "Invalid GPS pins (TX:" + String(txPin) + ", RX:" + String(rxPin) + ")";
+    String logEntry = String(millis()) + ",GPS,INIT_FAILED,1," + errorMsg;
+    writeToLog("system.csv", logEntry);
+    return false;
+  }
+  
   // For ESP32, use HardwareSerial. SERIAL_8N1 is the default config.
   int serialnum = 1; // Default to Serial1 (Pin 9/10)
   // Check pin combinations to determine which HardwareSerial to use
@@ -27,10 +39,34 @@ void setupGps(int txPin, int rxPin) {
   } else if ((txPin == 17 && rxPin == 16) || (txPin == 16 && rxPin == 17)) {
     serialnum = 2; // Serial2
   }
-  // Serial1 uses pins 9/10 by default, so keep serialnum = 1 for other combinations
-  gpsSerial = new HardwareSerial(serialnum);
-  gpsSerial->begin(GPS_BAUD_RATE, SERIAL_8N1, rxPin, txPin);
-  writeToLog("gps.txt", "GPS initialized on Serial" + String(serialnum));
+  
+  // Try to initialize the HardwareSerial
+  try {
+    // Serial1 uses pins 9/10 by default, so keep serialnum = 1 for other combinations
+    gpsSerial = new HardwareSerial(serialnum);
+    if (gpsSerial == nullptr) {
+      String errorMsg = "Failed to create HardwareSerial instance";
+      String logEntry = String(millis()) + ",GPS,INIT_FAILED,2," + errorMsg;
+      writeToLog("system.csv", logEntry);
+      return false;
+    }
+    
+    gpsSerial->begin(GPS_BAUD_RATE, SERIAL_8N1, rxPin, txPin);
+    
+    // Give a small delay to ensure initialization
+    delay(100);
+    
+    String initMsg = "GPS initialized on Serial" + String(serialnum) + " (TX:" + String(txPin) + ", RX:" + String(rxPin) + ")";
+    String logEntry = String(millis()) + ",GPS,INIT_SUCCESS,0," + initMsg;
+    writeToLog("system.csv", logEntry);
+    return true;
+    
+  } catch (...) {
+    String errorMsg = "Exception during GPS initialization";
+    String logEntry = String(millis()) + ",GPS,INIT_FAILED,3," + errorMsg;
+    writeToLog("system.csv", logEntry);
+    return false;
+  }
 }
 // Implementation of the updateGps function
 bool updateGps() {
@@ -56,6 +92,17 @@ bool updateGps() {
     else {
       currentGpsData.hasFix = false;
     }
+    
+    // Log GPS data to SD card
+    String dataEntry = String(millis()) + "," +
+                      String(currentGpsData.hasFix ? "1" : "0") + "," +
+                      String(currentGpsData.latitude, 6) + "," +
+                      String(currentGpsData.longitude, 6) + "," +
+                      String(currentGpsData.altitude, 2) + "," +
+                      String(currentGpsData.satelliteCount) + "," +
+                      String(currentGpsData.hdop, 2);
+    writeToLog("gps_data.csv", dataEntry);
+    
     // Return true to signal that new data is available for processing.
     return true;
   }
