@@ -19,4 +19,12 @@ bool setupSdLogger(int csPin);
  */
 void writeToLog(const String& filename, const String& data);
 
+/**
+ * @brief Writes column headers to a CSV file if the file doesn't exist yet.
+ * This should be called before the first writeToLog() call for each file.
+ * @param filename The name of the CSV file to write headers to (e.g., "gps.csv").
+ * @param headers Comma-separated string of column names (e.g., "Time,Latitude,Longitude").
+ */
+void writeLogHeaders(const String& filename, const String& headers);
+
 #endif // SD_LOGGER_H

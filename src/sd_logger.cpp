@@ -1,4 +1,5 @@
 #include "sd_logger.h"
+#include "FS.h"
 #include "SD.h"
 #include "SPI.h"
 
@@ -46,15 +47,38 @@ void writeToLog(const String& filename, const String& data) {
   // Combine the flight directory and filename to get the full path
   String filePath = flightDir + "/" + filename;
 
-  // Open the file in "write" mode (FILE_WRITE). This creates the file if it doesn't
+  // Open the file in append mode (FILE_APPEND). This creates the file if it doesn't
   // exist and moves the cursor to the end.
-  File logFile = SD.open(filePath, FILE_WRITE);
+  File logFile = SD.open(filePath, FILE_APPEND);
 
   if (logFile) {
     // If the file opened successfully, write the data.
     logFile.println(data);
     // Close the file to save the data and prevent corruption.
     logFile.close();
-  } else {
   }
+}
+
+void writeLogHeaders(const String& filename, const String& headers) {
+  // Guard clause: Do not attempt to write if the SD card isn't ready.
+  if (!sdInitialized) {
+    return;
+  }
+
+  // Combine the flight directory and filename to get the full path
+  String filePath = flightDir + "/" + filename;
+
+  // Check if the file already exists
+  if (!SD.exists(filePath)) {
+    // File doesn't exist, so we can write headers
+    File logFile = SD.open(filePath, FILE_WRITE);
+    
+    if (logFile) {
+      // Write the headers as the first line
+      logFile.println(headers);
+      // Close the file to save the headers
+      logFile.close();
+    }
+  }
+  // If file already exists, do nothing (headers already written)
 }

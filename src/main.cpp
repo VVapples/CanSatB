@@ -20,9 +20,28 @@
 #define Motor_BIN2_PIN nullptr //setlater
 
 void setup() {
+  Serial.begin(115200);
+  if (!setupSdLogger(SD_CD_PIN)) {
+    Serial.println("SD card initialization failed!");
+    return;
+  }
+  Serial.println("SD card initialized successfully.");
 
+  // Write headers for the log files
+  writeLogHeaders("gps.csv", "Time,Latitude,Longitude");
+  writeLogHeaders("ultrasonic.csv", "Time,Distance");
 }
 
 void loop() {
-  
+  // Example data to log
+  String gpsData = "1234567890,37.7749,-122.4194";
+  String ultrasonicData = "1234567890,150";
+
+  // Write GPS data to log
+  writeToLog("gps.csv", gpsData);
+
+  // Write Ultrasonic data to log
+  writeToLog("ultrasonic.csv", ultrasonicData);
+
+  delay(1000);  // Log data every second
 }
