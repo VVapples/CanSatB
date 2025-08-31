@@ -1,68 +1,145 @@
 #include "9axis.h"
-#include "sd_logger.h"
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
+#include "sd_logger.h"
 
 // Create an instance of the BNO055 sensor
-// The first parameter is an optional sensor ID, the second is the I2C address.
-static Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+// Using default I2C address (0x28) and default delay (32ms)
+static Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28, &Wire);
 
 // A private (static) variable to hold our latest data
-static BnoData currentBnoData;
+static Bno055Data currentBno055Data;
 // A flag to check if the sensor started successfully
-static bool bnoInitialized = false;
+static bool bno055Initialized = false;
 
-bool setupBno() {
-  // Attempt to initialize the BNO055. The mode specified, NDOF,
-  // is "Nine Degrees of Freedom" fusion mode, which is the most powerful.
-  if (!bno.begin(OPERATION_MODE_NDOF)) {
-    writeToLog("9axis.txt", "## Failed to find BNO055 sensor! Check wiring.");
-    bnoInitialized = false;
+bool setupBno055() {
+  // Initialize I2C communication
+  Wire.begin();
+  
+  // Initialize log headers for BNO055 data
+  writeLogHeaders("bno055_data.csv", "Timestamp,AccelX,AccelY,AccelZ,GyroX,GyroY,GyroZ,MagX,MagY,MagZ,Pitch,Roll,Heading,Temperature,QuatW,QuatX,QuatY,QuatZ,LinearAccelX,LinearAccelY,LinearAccelZ,GravityX,GravityY,GravityZ");
+  writeLogHeaders("system.csv", "Timestamp,Component,Event,Status,Details");
+  
+  // Start the BNO055 sensor
+  if (!bno.begin()) {
+    String errorMsg = "Failed to find BNO055 sensor! Check wiring.";
+    Serial.println("## " + errorMsg);
+    
+    // Log the error to SD card
+    String logEntry = String(millis()) + ",BNO055,INIT_FAILED,-1," + errorMsg;
+    writeToLog("system.csv", logEntry);
+    
+    bno055Initialized = false;
     return false;
   }
 
   // Optional: Add a small delay to allow the sensor to stabilize
-  delay(100);
+  delay(1000);
+  
+  // Set the external crystal use (this improves accuracy)
+  bno.setExtCrystalUse(true);
 
-  bnoInitialized = true;
+  String successMsg = "BNO055 initialized successfully!";
+  Serial.println(successMsg);
+  
+  // Log successful initialization
+  String logEntry = String(millis()) + ",BNO055,INIT_SUCCESS,0," + successMsg;
+  writeToLog("system.csv", logEntry);
+  
+  bno055Initialized = true;
   return true;
 }
 
-void updateBnoData() {
+void updateBno055Data() {
   // Don't try to read data if the sensor isn't initialized.
-  if (!bnoInitialized) {
+  if (!bno055Initialized) {
     return;
   }
 
-  // 1. Get Fused Orientation Data (Euler Angles)
+  // Get sensor events for different data types
+  sensors_event_t accelEvent, gyroEvent, magEvent, linearAccelEvent, gravityEvent;
+  
+  // Read accelerometer data
+  bno.getEvent(&accelEvent, Adafruit_BNO055::VECTOR_ACCELEROMETER);
+  currentBno055Data.accelX = accelEvent.acceleration.x;
+  currentBno055Data.accelY = accelEvent.acceleration.y;
+  currentBno055Data.accelZ = accelEvent.acceleration.z;
+
+  // Read gyroscope data
+  bno.getEvent(&gyroEvent, Adafruit_BNO055::VECTOR_GYROSCOPE);
+  currentBno055Data.gyroX = gyroEvent.gyro.x;
+  currentBno055Data.gyroY = gyroEvent.gyro.y;
+  currentBno055Data.gyroZ = gyroEvent.gyro.z;
+
+  // Read magnetometer data
+  bno.getEvent(&magEvent, Adafruit_BNO055::VECTOR_MAGNETOMETER);
+  currentBno055Data.magX = magEvent.magnetic.x;
+  currentBno055Data.magY = magEvent.magnetic.y;
+  currentBno055Data.magZ = magEvent.magnetic.z;
+
+  // Read linear acceleration (gravity removed)
+  bno.getEvent(&linearAccelEvent, Adafruit_BNO055::VECTOR_LINEARACCEL);
+  currentBno055Data.linearAccelX = linearAccelEvent.acceleration.x;
+  currentBno055Data.linearAccelY = linearAccelEvent.acceleration.y;
+  currentBno055Data.linearAccelZ = linearAccelEvent.acceleration.z;
+
+  // Read gravity vector
+  bno.getEvent(&gravityEvent, Adafruit_BNO055::VECTOR_GRAVITY);
+  currentBno055Data.gravityX = gravityEvent.acceleration.x;
+  currentBno055Data.gravityY = gravityEvent.acceleration.y;
+  currentBno055Data.gravityZ = gravityEvent.acceleration.z;
+
+  // Get orientation (Euler angles) - BNO055's fusion algorithm
   imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-  currentBnoData.heading = euler.x();
-  currentBnoData.roll = euler.y();
-  currentBnoData.pitch = euler.z();
+  currentBno055Data.heading = euler.x(); // Yaw (0-360 degrees)
+  currentBno055Data.pitch = euler.y();   // Pitch (-180 to +180 degrees)  
+  currentBno055Data.roll = euler.z();    // Roll (-90 to +90 degrees)
 
-  // 2. Get Fused Linear Acceleration (without gravity)
-  imu::Vector<3> linearAccel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
-  currentBnoData.linearAccelX = linearAccel.x();
-  currentBnoData.linearAccelY = linearAccel.y();
-  currentBnoData.linearAccelZ = linearAccel.z();
+  // Get quaternion data
+  imu::Quaternion quat = bno.getQuat();
+  currentBno055Data.quatW = quat.w();
+  currentBno055Data.quatX = quat.x();
+  currentBno055Data.quatY = quat.y();
+  currentBno055Data.quatZ = quat.z();
 
-  // 3. Get Calibration Status
-  bno.getCalibration(&currentBnoData.sys_cal, &currentBnoData.gyro_cal, &currentBnoData.accel_cal, &currentBnoData.mag_cal);
+  // Get temperature
+  currentBno055Data.temperature = bno.getTemp();
+  
+  // Log sensor data to SD card
+  String dataEntry = String(millis()) + "," +
+                    String(currentBno055Data.accelX, 3) + "," +
+                    String(currentBno055Data.accelY, 3) + "," +
+                    String(currentBno055Data.accelZ, 3) + "," +
+                    String(currentBno055Data.gyroX, 2) + "," +
+                    String(currentBno055Data.gyroY, 2) + "," +
+                    String(currentBno055Data.gyroZ, 2) + "," +
+                    String(currentBno055Data.magX, 1) + "," +
+                    String(currentBno055Data.magY, 1) + "," +
+                    String(currentBno055Data.magZ, 1) + "," +
+                    String(currentBno055Data.pitch, 2) + "," +
+                    String(currentBno055Data.roll, 2) + "," +
+                    String(currentBno055Data.heading, 2) + "," +
+                    String(currentBno055Data.temperature, 1) + "," +
+                    String(currentBno055Data.quatW, 4) + "," +
+                    String(currentBno055Data.quatX, 4) + "," +
+                    String(currentBno055Data.quatY, 4) + "," +
+                    String(currentBno055Data.quatZ, 4) + "," +
+                    String(currentBno055Data.linearAccelX, 3) + "," +
+                    String(currentBno055Data.linearAccelY, 3) + "," +
+                    String(currentBno055Data.linearAccelZ, 3) + "," +
+                    String(currentBno055Data.gravityX, 3) + "," +
+                    String(currentBno055Data.gravityY, 3) + "," +
+                    String(currentBno055Data.gravityZ, 3);
+  
+  writeToLog("bno055_data.csv", dataEntry);
 }
 
-BnoData getBnoData() {
-  return currentBnoData;
+Bno055Data getBno055Data() {
+  return currentBno055Data;
 }
 
-bool isBnoCalibrated() {
-  if (!bnoInitialized) {
-    return false;
-  }
-  // The sensor is fully calibrated only when all four values are 3.
-  return (currentBnoData.sys_cal == 3 &&
-          currentBnoData.gyro_cal == 3 &&
-          currentBnoData.accel_cal == 3 &&
-          currentBnoData.mag_cal == 3);
+bool isBno055Ready() {
+  return bno055Initialized;
 }
