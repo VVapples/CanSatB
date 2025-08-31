@@ -21,7 +21,6 @@ static const uint32_t GPS_BAUD_RATE = 9600;
 bool setupGps(int txPin, int rxPin) {
   // Initialize log headers
   writeLogHeaders("gps_data.csv", "Timestamp,HasFix,Latitude,Longitude,Altitude,SatelliteCount,HDOP");
-  writeLogHeaders("system.csv", "Timestamp,Component,Event,Status,Details");
   
   // Validate pin numbers (basic check for ESP32)
   if (txPin < 0 || txPin > 39 || rxPin < 0 || rxPin > 39) {
@@ -56,7 +55,27 @@ bool setupGps(int txPin, int rxPin) {
     // Give a small delay to ensure initialization
     delay(100);
     
-    String initMsg = "GPS initialized on Serial" + String(serialnum) + " (TX:" + String(txPin) + ", RX:" + String(rxPin) + ")";
+    // Try to detect if GPS is actually connected
+    unsigned long startTime = millis();
+    bool gpsDetected = false;
+    
+    // Wait up to 5 seconds for any GPS data
+    while (millis() - startTime < 5000) {
+      if (gpsSerial->available() > 0) {
+        gpsDetected = true;
+        break;
+      }
+      delay(100);
+    }
+    
+    if (!gpsDetected) {
+      String errorMsg = "No GPS data received - GPS module not detected";
+      String logEntry = String(millis()) + ",GPS,INIT_FAILED,4," + errorMsg;
+      writeToLog("system.csv", logEntry);
+      return false;
+    }
+    
+    String initMsg = "GPS detected and initialized on Serial" + String(serialnum) + " (TX:" + String(txPin) + ", RX:" + String(rxPin) + ")";
     String logEntry = String(millis()) + ",GPS,INIT_SUCCESS,0," + initMsg;
     writeToLog("system.csv", logEntry);
     return true;

@@ -20,12 +20,10 @@ bool setupBno055() {
   
   // Initialize log headers for BNO055 data
   writeLogHeaders("bno055_data.csv", "Timestamp,AccelX,AccelY,AccelZ,GyroX,GyroY,GyroZ,MagX,MagY,MagZ,Pitch,Roll,Heading,Temperature,QuatW,QuatX,QuatY,QuatZ,LinearAccelX,LinearAccelY,LinearAccelZ,GravityX,GravityY,GravityZ");
-  writeLogHeaders("system.csv", "Timestamp,Component,Event,Status,Details");
   
   // Start the BNO055 sensor
   if (!bno.begin()) {
     String errorMsg = "Failed to find BNO055 sensor! Check wiring.";
-    Serial.println("## " + errorMsg);
     
     // Log the error to SD card
     String logEntry = String(millis()) + ",BNO055,INIT_FAILED,-1," + errorMsg;
@@ -42,8 +40,7 @@ bool setupBno055() {
   bno.setExtCrystalUse(true);
 
   String successMsg = "BNO055 initialized successfully!";
-  Serial.println(successMsg);
-  
+
   // Log successful initialization
   String logEntry = String(millis()) + ",BNO055,INIT_SUCCESS,0," + successMsg;
   writeToLog("system.csv", logEntry);
