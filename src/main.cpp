@@ -96,7 +96,7 @@ void setup() {
 void loop() {
   // state = "running";
   // // Update sensor data
-  // updateBno055Data();
+  updateBno055Data();
   // updateGps();
   // float distance = getDistanceCm();
 
