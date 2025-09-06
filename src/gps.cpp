@@ -113,13 +113,14 @@ bool updateGps() {
     }
     
     // Log GPS data to SD card
-    String dataEntry = String(millis()) + "," +
-                      String(currentGpsData.hasFix ? "1" : "0") + "," +
-                      String(currentGpsData.latitude, 6) + "," +
-                      String(currentGpsData.longitude, 6) + "," +
-                      String(currentGpsData.altitude, 2) + "," +
-                      String(currentGpsData.satelliteCount) + "," +
-                      String(currentGpsData.hdop, 2);
+    String dataEntry = 
+        String(millis()) + "," +
+        String(currentGpsData.hasFix ? "1" : "0") + "," +
+        String(currentGpsData.latitude, 6) + "," +
+        String(currentGpsData.longitude, 6) + "," +
+        String(currentGpsData.altitude, 2) + "," +
+        String(currentGpsData.satelliteCount) + "," +
+        String(currentGpsData.hdop, 2);
     writeToLog("gps_data.csv", dataEntry);
     
     // Return true to signal that new data is available for processing.
