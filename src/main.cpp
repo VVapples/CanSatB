@@ -9,11 +9,15 @@ HardwareSerial unitCamSerial(2);
 
 // Test parameters
 #define CAMERA_BAUD_RATE 9600
-#define TEST_INTERVAL 5000    // Test every 5 seconds
-#define RESPONSE_TIMEOUT 2000 // Timeout for camera responses
+#define STREAM_INTERVAL 1000   // Stream every 1 second (1 FPS)
+#define RESPONSE_TIMEOUT 2000  // Timeout for camera responses
+#define MAX_IMAGE_SIZE 8192    // Maximum expected image size in bytes
+#define STREAM_MODE true       // Set to true for streaming, false for testing
 
 // Function declarations
 void setupUnitCam();
+void streamCameraLoop();
+void captureAndStreamImage();
 void testUnitCamCommunication();
 void sendCameraCommand(String command);
 void readCameraResponse();
@@ -21,9 +25,10 @@ void testBasicCommands();
 void testCameraInfo();
 void testImageCapture();
 void printHexData(uint8_t* data, int length);
+void sendImageOverSerial(uint8_t* imageData, int imageSize);
 
 void setup() {
-  // Initialize USB Serial for PC communication
+  // Initialize USB Serial for PC communication at higher baud rate for streaming
   Serial.begin(115200);
   
   // Wait for serial to initialize
@@ -31,42 +36,60 @@ void setup() {
     delay(100);
   }
   
-  Serial.println("========================================");
-  Serial.println("M5Stack Unit-Cam Test Program");
-  Serial.println("========================================");
-  Serial.println("ESP32 <-> Unit-Cam Pin Configuration:");
-  Serial.println("  GPIO16 -> Unit-Cam G1 (RX)");
-  Serial.println("  GPIO17 -> Unit-Cam G3 (TX)");
+  if (STREAM_MODE) {
+    Serial.println("========================================");
+    Serial.println("M5Stack Unit-Cam STREAMING Mode");
+    Serial.println("========================================");
+    Serial.println("Starting camera stream at 1 FPS...");
+    Serial.println("Use Python script to view stream on PC");
+  } else {
+    Serial.println("========================================");
+    Serial.println("M5Stack Unit-Cam Test Program");
+    Serial.println("========================================");
+    Serial.println("ESP32 <-> Unit-Cam Pin Configuration:");
+    Serial.println("  GPIO16 -> Unit-Cam G1 (RX)");
+    Serial.println("  GPIO17 -> Unit-Cam G3 (TX)");
+  }
   Serial.println("========================================");
   
   // Initialize Unit-Cam
   setupUnitCam();
   
-  Serial.println("Setup complete. Starting camera tests...");
+  if (STREAM_MODE) {
+    Serial.println("STREAM_START"); // Marker for Python script
+  } else {
+    Serial.println("Setup complete. Starting camera tests...");
+  }
   delay(2000);
 }
 
 void loop() {
-  Serial.println("\n=== Starting Unit-Cam Test Cycle ===");
-  
-  // Test basic communication
-  testUnitCamCommunication();
-  delay(1000);
-  
-  // Test camera information
-  testCameraInfo();
-  delay(1000);
-  
-  // Test basic commands
-  testBasicCommands();
-  delay(1000);
-  
-  // Test image capture
-  testImageCapture();
-  
-  Serial.println("=== Test Cycle Complete ===");
-  Serial.println("Waiting " + String(TEST_INTERVAL/1000) + " seconds before next cycle...\n");
-  delay(TEST_INTERVAL);
+  if (STREAM_MODE) {
+    // Streaming mode - capture and send images continuously
+    streamCameraLoop();
+  } else {
+    // Test mode - run diagnostic tests
+    Serial.println("\n=== Starting Unit-Cam Test Cycle ===");
+    
+    // Test basic communication
+    testUnitCamCommunication();
+    delay(1000);
+    
+    // Test camera information
+    testCameraInfo();
+    delay(1000);
+    
+    // Test basic commands
+    testBasicCommands();
+    delay(1000);
+    
+    // Test image capture
+    testImageCapture();
+    
+    Serial.println("=== Test Cycle Complete ===");
+    Serial.println("Waiting 5 seconds before next cycle...\n");
+    delay(5000);
+  }
 }
 
 // Setup Unit-Cam communication
@@ -243,4 +266,81 @@ void printHexData(uint8_t* data, int length) {
     }
   }
   Serial.println();
+}
+
+// Streaming mode main loop
+void streamCameraLoop() {
+  static unsigned long lastCapture = 0;
+  
+  if (millis() - lastCapture >= STREAM_INTERVAL) {
+    captureAndStreamImage();
+    lastCapture = millis();
+  }
+  
+  // Small delay to prevent overwhelming the system
+  delay(10);
+}
+
+// Capture image and stream it over serial
+void captureAndStreamImage() {
+  // Send capture command
+  unitCamSerial.println("AT+CAPTURE");
+  delay(500); // Wait for camera to process
+  
+  // Allocate buffer for image data
+  uint8_t* imageBuffer = (uint8_t*)malloc(MAX_IMAGE_SIZE);
+  if (!imageBuffer) {
+    Serial.println("ERROR: Could not allocate memory for image");
+    return;
+  }
+  
+  int bytesRead = 0;
+  unsigned long startTime = millis();
+  
+  // Read image data from camera
+  while (bytesRead < MAX_IMAGE_SIZE && (millis() - startTime) < 3000) {
+    if (unitCamSerial.available()) {
+      imageBuffer[bytesRead] = unitCamSerial.read();
+      bytesRead++;
+      startTime = millis(); // Reset timeout on data reception
+    }
+    delay(1);
+  }
+  
+  if (bytesRead > 0) {
+    // Send image over serial to PC
+    sendImageOverSerial(imageBuffer, bytesRead);
+  } else {
+    Serial.println("FRAME_ERROR: No image data received");
+  }
+  
+  free(imageBuffer);
+}
+
+// Send image data over serial in a format the PC can understand
+void sendImageOverSerial(uint8_t* imageData, int imageSize) {
+  // Send frame header
+  Serial.print("FRAME_START:");
+  Serial.print(imageSize);
+  Serial.println();
+  
+  // Send image data in chunks to avoid buffer overflow
+  const int chunkSize = 64;
+  for (int i = 0; i < imageSize; i += chunkSize) {
+    int remaining = imageSize - i;
+    int currentChunk = (remaining < chunkSize) ? remaining : chunkSize;
+    
+    Serial.print("DATA:");
+    for (int j = 0; j < currentChunk; j++) {
+      if (imageData[i + j] < 16) Serial.print("0");
+      Serial.print(imageData[i + j], HEX);
+    }
+    Serial.println();
+    
+    delay(1); // Small delay to prevent overwhelming serial buffer
+  }
+  
+  // Send frame footer
+  Serial.println("FRAME_END");
+  Serial.flush(); // Ensure all data is sent
 }
