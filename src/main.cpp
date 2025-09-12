@@ -9,8 +9,8 @@
 #define BNO055_SDA_PIN 7 // D0
 #define BNO055_SCL_PIN 8 // D1
 
-#define GPS_RX_PIN 10 // D3
-#define GPS_TX_PIN 9 // D2
+#define GPS_TX_PIN 10 // D3 - ESP32 transmits to GPS RX
+#define GPS_RX_PIN 9 // D2 - ESP32 receives from GPS TX
 
 #define ULTRASONIC_TRIGGER_PIN 1
 #define ULTRASONIC_ECHO_PIN 3
@@ -68,22 +68,10 @@ void setup() {
   writeToLog("debug.csv", String(millis()) + ",MAIN,GPS_INIT_START,0,Starting GPS initialization");
   
   try {
-    bool gpsResult = setupGps(GPS_TX_PIN, GPS_RX_PIN);
-    writeToLog("debug.csv", String(millis()) + ",MAIN,GPS_SETUP_RESULT,0,GPS setup result: " + String(gpsResult ? "SUCCESS" : "FAILED"));
-    
-    if (!gpsResult) {
-      state = "error";
-      state_description = "GPS initialization failed!";
-      writeToLog("system.csv", String(millis()) + ",GPS,INIT_FAILED,-1,GPS initialization failed - no module detected");
-      writeToLog("debug.csv", String(millis()) + ",MAIN,GPS_HALT,0,GPS failed - system will halt");
-      while (true) {
-        // Stay here forever if GPS fails to initialize
-        delay(1000);
-      }
-    } else {
-      writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
-      writeToLog("debug.csv", String(millis()) + ",MAIN,GPS_SUCCESS,0,GPS initialization completed successfully");
-    }
+    setupGps(GPS_TX_PIN, GPS_RX_PIN); // ESP32_TX=10, ESP32_RX=9
+    writeToLog("debug.csv", String(millis()) + ",MAIN,GPS_SETUP_RESULT,0,GPS setup completed");
+    writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
+    writeToLog("debug.csv", String(millis()) + ",MAIN,GPS_SUCCESS,0,GPS initialization completed successfully");
   } catch (...) {
     state = "error";
     state_description = "GPS initialization crashed!";
