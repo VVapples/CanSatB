@@ -1,138 +1,261 @@
 #include "gps.h"
-#include "sd_logger.h"
 #include <Arduino.h>
 #include <HardwareSerial.h>
 #include <TinyGPS++.h>
 
-// The serial connection to the GPS module
-// We use static to keep these variables private to this file.
-static HardwareSerial* gpsSerial = nullptr; // Will be initialized in setupGps
+// Serial connection to Ultimate GPS Breakout v3 (MTK3339)
+static HardwareSerial* gpsSerial = nullptr;
 
-// The TinyGPS++ object that parses GPS data
+// TinyGPS++ parser optimized for Ultimate GPS v3
 static TinyGPSPlus gps;
 
-// The structure that holds our latest GPS data
+// Current GPS data structure
 static GpsData currentGpsData;
 
-// GPS module's default baud rate
-static const uint32_t GPS_BAUD_RATE = 9600;
+// Ultimate GPS v3 specific constants
+static const uint32_t GPS_BAUD_RATE = 9600;  // MTK3339 default baud rate
+static const uint32_t MODULE_TIMEOUT = 10000; // 10 second timeout for module detection
 
-// Implementation of the setupGps function
+// Module detection and health monitoring
+static uint32_t lastDataReceived = 0;
+static uint32_t moduleInitTime = 0;
+static bool moduleResponding = false;
+
+// MTK3339 Command Templates for Ultimate GPS v3
+static const char* MTK_SET_NMEA_UPDATE_RATE = "$PMTK220,%d*"; // Update rate command
+static const char* MTK_SET_NMEA_OUTPUT = "$PMTK314,0,1,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0*"; // Output format
+static const char* MTK_API_SET_FIX_CTL = "$PMTK300,%d,0,0,0,0*"; // Fix control
+static const char* MTK_SET_DATUM = "$PMTK330,0*"; // Set datum to WGS84
+static const char* MTK_ENABLE_SBAS = "$PMTK313,1*"; // Enable SBAS
+static const char* MTK_ENABLE_WAAS = "$PMTK301,2*"; // Enable WAAS
+
+// Calculate MTK command checksum
+uint8_t calculateMTKChecksum(const char* command) {
+    uint8_t checksum = 0;
+    // Skip the '$' and calculate until '*'
+    for (int i = 1; command[i] != '*' && command[i] != '\0'; i++) {
+        checksum ^= command[i];
+    }
+    return checksum;
+}
+
+// Send MTK command to Ultimate GPS v3
+void sendMTKCommand(const char* command) {
+    if (gpsSerial == nullptr) return;
+    
+    char fullCommand[100];
+    strcpy(fullCommand, command);
+    
+    // Find the '*' and add checksum
+    char* asterisk = strchr(fullCommand, '*');
+    if (asterisk != nullptr) {
+        uint8_t checksum = calculateMTKChecksum(fullCommand);
+        sprintf(asterisk, "*%02X\r\n", checksum);
+    } else {
+        strcat(fullCommand, "\r\n");
+    }
+    
+    gpsSerial->print(fullCommand);
+    delay(100); // Give GPS time to process command
+}
 bool setupGps(int txPin, int rxPin) {
-  // Initialize log headers
-  writeLogHeaders("gps_data.csv", "Timestamp,HasFix,Latitude,Longitude,Altitude,SatelliteCount,HDOP");
-  
-  // Validate pin numbers (basic check for ESP32)
-  if (txPin < 0 || txPin > 39 || rxPin < 0 || rxPin > 39) {
-    String errorMsg = "Invalid GPS pins (TX:" + String(txPin) + ", RX:" + String(rxPin) + ")";
-    String logEntry = String(millis()) + ",GPS,INIT_FAILED,1," + errorMsg;
-    writeToLog("system.csv", logEntry);
-    return false;
-  }
-  
-  // For ESP32, use HardwareSerial. SERIAL_8N1 is the default config.
-  int serialnum = 1; // Default to Serial1 (Pin 9/10)
-  // Check pin combinations to determine which HardwareSerial to use
-  if ((txPin == 1 && rxPin == 3) || (txPin == 3 && rxPin == 1)) {
-    serialnum = 0; // Serial0 (USB serial)
-  } else if ((txPin == 17 && rxPin == 16) || (txPin == 16 && rxPin == 17)) {
-    serialnum = 2; // Serial2
-  }
-  
-  // Try to initialize the HardwareSerial
-  try {
-    // Serial1 uses pins 9/10 by default, so keep serialnum = 1 for other combinations
-    gpsSerial = new HardwareSerial(serialnum);
+    // Initialize GPS data structure
+    memset(&currentGpsData, 0, sizeof(GpsData));
+    currentGpsData.moduleDetected = false;
+    currentGpsData.hasFix = false;
+    currentGpsData.timeValid = false;
+    
+    // Determine which UART to use based on pins
+    int serialNum = 1; // Default to Serial1
+    if ((txPin == 1 && rxPin == 3) || (txPin == 3 && rxPin == 1)) {
+        serialNum = 0; // Serial0 (USB)
+    } else if ((txPin == 17 && rxPin == 16) || (txPin == 16 && rxPin == 17)) {
+        serialNum = 2; // Serial2
+    }
+    
+    // Initialize hardware serial for Ultimate GPS v3
+    gpsSerial = new HardwareSerial(serialNum);
     if (gpsSerial == nullptr) {
-      String errorMsg = "Failed to create HardwareSerial instance";
-      String logEntry = String(millis()) + ",GPS,INIT_FAILED,2," + errorMsg;
-      writeToLog("system.csv", logEntry);
-      return false;
+        return false;
     }
     
     gpsSerial->begin(GPS_BAUD_RATE, SERIAL_8N1, rxPin, txPin);
+    moduleInitTime = millis();
     
-    // Give a small delay to ensure initialization
-    delay(100);
+    // Wait for GPS module to initialize
+    delay(1000);
     
-    // Try to detect if GPS is actually connected
-    unsigned long startTime = millis();
-    bool gpsDetected = false;
+    // Configure Ultimate GPS v3 for optimal performance
+    configureUltimateGPS(1, true, true, true, false, true);
     
-    // Wait up to 5 seconds for any GPS data
-    while (millis() - startTime < 5000) {
-      if (gpsSerial->available() > 0) {
-        gpsDetected = true;
-        break;
-      }
-      delay(100);
-    }
-    
-    if (!gpsDetected) {
-      String errorMsg = "No GPS data received - GPS module not detected";
-      String logEntry = String(millis()) + ",GPS,INIT_FAILED,4," + errorMsg;
-      writeToLog("system.csv", logEntry);
-      return false;
-    }
-    
-    String initMsg = "GPS detected and initialized on Serial" + String(serialnum) + " (TX:" + String(txPin) + ", RX:" + String(rxPin) + ")";
-    String logEntry = String(millis()) + ",GPS,INIT_SUCCESS,0," + initMsg;
-    writeToLog("system.csv", logEntry);
     return true;
-    
-  } catch (...) {
-    String errorMsg = "Exception during GPS initialization";
-    String logEntry = String(millis()) + ",GPS,INIT_FAILED,3," + errorMsg;
-    writeToLog("system.csv", logEntry);
-    return false;
-  }
 }
-// Implementation of the updateGps function
+void configureUltimateGPS(uint8_t updateRate, bool enableRMC, bool enableGGA, 
+                         bool enableGSA, bool enableGSV, bool enableVTG) {
+    if (gpsSerial == nullptr) return;
+    
+    // Set update rate (1-10 Hz for Ultimate GPS v3)
+    if (updateRate >= 1 && updateRate <= 10) {
+        char rateCmd[50];
+        uint16_t period = 1000 / updateRate;
+        sprintf(rateCmd, "$PMTK220,%d*", period);
+        sendMTKCommand(rateCmd);
+    }
+    
+    // Configure NMEA sentence output
+    char outputCmd[100];
+    sprintf(outputCmd, "$PMTK314,0,%d,0,%d,%d,%d,0,0,0,0,0,0,0,0,0,0,0,%d,0*",
+            enableRMC ? 1 : 0,  // RMC
+            enableGGA ? 1 : 0,  // GGA  
+            enableGSA ? 1 : 0,  // GSA
+            enableGSV ? 1 : 0,  // GSV
+            enableVTG ? 1 : 0); // VTG
+    sendMTKCommand(outputCmd);
+    
+    // Enable SBAS (WAAS/EGNOS) for better accuracy
+    sendMTKCommand("$PMTK313,1*");
+    sendMTKCommand("$PMTK301,2*");
+    
+    // Set datum to WGS84
+    sendMTKCommand("$PMTK330,0*");
+    
+    // Hot start for faster fix (Ultimate GPS v3 feature)
+    sendMTKCommand("$PMTK101*");
+}
+
+bool setDataLogging(bool enable) {
+    if (gpsSerial == nullptr) return false;
+    
+    if (enable) {
+        // Start logging (Ultimate GPS v3 internal flash logging)
+        sendMTKCommand("$PMTK185,0*");
+        delay(100);
+        sendMTKCommand("$PMTK185,1*");
+    } else {
+        // Stop logging
+        sendMTKCommand("$PMTK185,0*");
+    }
+    
+    return true;
+}
+
+void setAntennaType(bool useExternal) {
+    if (gpsSerial == nullptr) return;
+    
+    if (useExternal) {
+        // Configure for external active antenna
+        sendMTKCommand("$PGCMD,33,1*");
+    } else {
+        // Configure for internal patch antenna  
+        sendMTKCommand("$PGCMD,33,0*");
+    }
+}
 bool updateGps() {
-  // Read all available characters from the GPS serial port
-  while (gpsSerial->available() > 0) {
-    gps.encode(gpsSerial->read());
-  }
-
-  // TinyGPS++ updates its internal state with every character.
-  // We can check if a key piece of data, like location, has been
-  // updated since the last time we checked.
-  if (gps.location.isUpdated()) {
-    // If location is valid, populate our struct with new data.
-    if (gps.location.isValid()) {
-      currentGpsData.hasFix = true;
-      currentGpsData.latitude = gps.location.lat();
-      currentGpsData.longitude = gps.location.lng();
-      currentGpsData.satelliteCount = gps.satellites.value();
-      currentGpsData.hdop = gps.hdop.hdop();
-      currentGpsData.altitude = gps.altitude.meters();
-    }
-    // If the location is invalid (e.g., lost signal), mark it as no fix.
-    else {
-      currentGpsData.hasFix = false;
+    if (gpsSerial == nullptr) return false;
+    
+    bool newData = false;
+    
+    // Process all available GPS data
+    while (gpsSerial->available() > 0) {
+        char c = gpsSerial->read();
+        if (gps.encode(c)) {
+            lastDataReceived = millis();
+            moduleResponding = true;
+            newData = true;
+        }
     }
     
-    // Log GPS data to SD card
-    String dataEntry = 
-        String(millis()) + "," +
-        String(currentGpsData.hasFix ? "1" : "0") + "," +
-        String(currentGpsData.latitude, 6) + "," +
-        String(currentGpsData.longitude, 6) + "," +
-        String(currentGpsData.altitude, 2) + "," +
-        String(currentGpsData.satelliteCount) + "," +
-        String(currentGpsData.hdop, 2);
-    writeToLog("gps_data.csv", dataEntry);
+    // Check module timeout
+    if (millis() - lastDataReceived > MODULE_TIMEOUT) {
+        moduleResponding = false;
+    }
     
-    // Return true to signal that new data is available for processing.
-    return true;
-  }
-
-  // If no new location data was found, return false.
-  return false;
+    currentGpsData.moduleDetected = moduleResponding;
+    
+    // Update GPS data if location was updated
+    if (gps.location.isUpdated() || gps.time.isUpdated() || gps.date.isUpdated()) {
+        currentGpsData.lastUpdate = millis();
+        
+        // Position data (high precision for Ultimate GPS v3)
+        if (gps.location.isValid()) {
+            currentGpsData.hasFix = true;
+            currentGpsData.latitude = gps.location.lat();
+            currentGpsData.longitude = gps.location.lng();
+        } else {
+            currentGpsData.hasFix = false;
+        }
+        
+        // Altitude
+        if (gps.altitude.isValid()) {
+            currentGpsData.altitude = gps.altitude.meters();
+        }
+        
+        // Satellite information
+        if (gps.satellites.isValid()) {
+            currentGpsData.satelliteCount = gps.satellites.value();
+        }
+        
+        // Dilution of Precision (Ultimate GPS v3 provides all DOP values)
+        if (gps.hdop.isValid()) {
+            currentGpsData.hdop = gps.hdop.hdop();
+        }
+        
+        // Speed data (Ultimate GPS v3 provides accurate speed)
+        if (gps.speed.isValid()) {
+            currentGpsData.speed_kmh = gps.speed.kmph();
+            currentGpsData.speed_knots = gps.speed.knots();
+        }
+        
+        // Course over ground
+        if (gps.course.isValid()) {
+            currentGpsData.course = gps.course.deg();
+        }
+        
+        // Time and date (Ultimate GPS v3 has RTC backup)
+        if (gps.time.isValid() && gps.date.isValid()) {
+            currentGpsData.timeValid = true;
+            currentGpsData.hour = gps.time.hour();
+            currentGpsData.minute = gps.time.minute();
+            currentGpsData.second = gps.time.second();
+            currentGpsData.centisecond = gps.time.centisecond();
+            currentGpsData.day = gps.date.day();
+            currentGpsData.month = gps.date.month();
+            currentGpsData.year = gps.date.year();
+        } else {
+            currentGpsData.timeValid = false;
+        }
+        
+        // Fix quality and type inference
+        if (currentGpsData.hasFix) {
+            currentGpsData.fixQuality = 1; // GPS fix
+            currentGpsData.fixType = (gps.altitude.isValid()) ? 3 : 2; // 3D or 2D fix
+        } else {
+            currentGpsData.fixQuality = 0; // Invalid
+            currentGpsData.fixType = 1;    // No fix
+        }
+        
+        // GPS statistics (Ultimate GPS v3 diagnostics)
+        currentGpsData.age = gps.location.age();
+        currentGpsData.charsProcessed = gps.charsProcessed();
+        currentGpsData.sentencesWithFix = gps.sentencesWithFix();
+        currentGpsData.failedChecksum = gps.failedChecksum();
+        
+        return true;
+    }
+    
+    return false;
 }
 
-// Implementation of the getGpsData function
 GpsData getGpsData() {
-  // Simply return the latest data we have stored.
-  return currentGpsData;
+    return currentGpsData;
+}
+
+bool isGpsModuleDetected() {
+    return moduleResponding && (millis() - lastDataReceived < MODULE_TIMEOUT);
+}
+
+void getGpsStatistics(uint32_t &totalChars, uint32_t &validSentences, uint32_t &failedChecksums) {
+    totalChars = gps.charsProcessed();
+    validSentences = gps.sentencesWithFix();
+    failedChecksums = gps.failedChecksum();
 }

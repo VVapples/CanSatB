@@ -50,29 +50,29 @@ void setup() {
   }
 
   // Other sensor setups
-  // BNO055
-  if (!setupBno055()) {
-    state = "error";
-    state_description = "BNO055 initialization failed!";
-    while (true) {
-      // Stay here forever if BNO055 fails to initialize
-      delay(1000);
-    }
-  }
-
-  // // GPS
-  // if (!setupGps(GPS_TX_PIN, GPS_RX_PIN)) {
+  // // BNO055
+  // if (!setupBno055()) {
   //   state = "error";
-  //   state_description = "GPS initialization failed!";
-  //   writeToLog("system.csv", String(millis()) + ",GPS,INIT_FAILED,-1,GPS initialization failed!");
+  //   state_description = "BNO055 initialization failed!";
   //   while (true) {
-  //     // Stay here forever if GPS fails to initialize
+  //     // Stay here forever if BNO055 fails to initialize
   //     delay(1000);
   //   }
-  // } else {
-  //   writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
   // }
-  //
+
+  // GPS
+  if (!setupGps(GPS_TX_PIN, GPS_RX_PIN)) {
+    state = "error";
+    state_description = "GPS initialization failed!";
+    writeToLog("system.csv", String(millis()) + ",GPS,INIT_FAILED,-1,GPS initialization failed!");
+    while (true) {
+      // Stay here forever if GPS fails to initialize
+      delay(1000);
+    }
+  } else {
+    writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
+  }
+  
   // // Ultrasonic
   //
   // if (!setupUltrasonic(ULTRASONIC_TRIGGER_PIN, ULTRASONIC_ECHO_PIN)) {
@@ -96,8 +96,8 @@ void setup() {
 void loop() {
   // state = "running";
   // // Update sensor data
-  updateBno055Data();
-  // updateGps();
+  // updateBno055Data();
+  updateGps();
   // float distance = getDistanceCm();
 
   // // logs are made within other codes indivisulally
