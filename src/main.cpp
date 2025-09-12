@@ -50,29 +50,31 @@ void setup() {
   }
 
   // Other sensor setups
-  // BNO055
-  if (!setupBno055()) {
-    state = "error";
-    state_description = "BNO055 initialization failed!";
-    while (true) {
-      // Stay here forever if BNO055 fails to initialize
-      delay(1000);
-    }
-  }
 
-  // // GPS
-  // if (!setupGps(GPS_TX_PIN, GPS_RX_PIN)) {
+  // // BNO055
+  // if (!setupBno055()) {
   //   state = "error";
-  //   state_description = "GPS initialization failed!";
-  //   writeToLog("system.csv", String(millis()) + ",GPS,INIT_FAILED,-1,GPS initialization failed!");
+  //   state_description = "BNO055 initialization failed!";
   //   while (true) {
-  //     // Stay here forever if GPS fails to initialize
+  //     // Stay here forever if BNO055 fails to initialize
   //     delay(1000);
   //   }
-  // } else {
-  //   writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
   // }
-  //
+
+  // GPS
+  if (!setupGps(GPS_TX_PIN, GPS_RX_PIN)) {
+    state = "error";
+    state_description = "GPS initialization failed!";
+    writeToLog("system.csv", String(millis()) + ",GPS,INIT_FAILED,-1,GPS initialization failed!");
+    while (true) {
+      // Stay here forever if GPS fails to initialize
+      delay(1000);
+    }
+  } else {
+    writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
+    configureGps(1, 9600); // 1 Hz update rate, 9600 baud
+  }
+  
   // // Ultrasonic
   //
   // if (!setupUltrasonic(ULTRASONIC_TRIGGER_PIN, ULTRASONIC_ECHO_PIN)) {
@@ -94,14 +96,43 @@ void setup() {
 }
 
 void loop() {
-  // state = "running";
+  state = "running";
+
+  static unsigned long lastLogTime = 0;
+  if (millis() - lastLogTime >= 5000) {
+    writeToLog("system.csv", String(millis()) + ",SYSTEM,LOOP_RUNNING,0,System main loop running - State: " + state + ", Description: " + state_description);
+    lastLogTime = millis();
+  }
+
   // // Update sensor data
-  updateBno055Data();
-  // updateGps();
+  // updateBno055Data();
+  updateGps();
   // float distance = getDistanceCm();
 
   // // logs are made within other codes indivisulally
   // // no need to log here
 
-  // delay(100); // Adjust delay as needed for your application
+  //debugging
+
+  GpsData currentGpsData = getGpsData();
+  static String gpswriteBuffer = "";
+  gpswriteBuffer = "" + String(millis()) + "," +
+                   String(currentGpsData.latitude, 6) + "," +
+                   String(currentGpsData.longitude, 6) + "," +
+                   String(currentGpsData.altitude, 2) + "," +
+                   String(currentGpsData.hasFix ? 1 : 0) + "," +
+                   String(currentGpsData.moduleDetected ? 1 : 0) + "," +
+                   String(currentGpsData.satelliteCount) + "," +
+                   String(currentGpsData.hdop, 2) + "," +
+                   String(currentGpsData.fixQuality) + "," +
+                   String(currentGpsData.fixType) + "," +
+                   String(currentGpsData.speed, 2) + "," +
+                   String(currentGpsData.course, 2) + "," +
+                   String(currentGpsData.timeValid ? 1 : 0) + "," +
+                   String(currentGpsData.date) + "," +
+                   String(currentGpsData.time) + "," +
+                   String(currentGpsData.lastUpdate);
+  writeToLog("gps_data.csv", gpswriteBuffer);
+
+  delay(100); // Adjust delay as needed for your application
 }
