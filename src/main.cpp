@@ -3,6 +3,7 @@
 #include "gps.h"
 #include "sd_logger.h"
 #include "ultrasonic.h"
+#include "pos_est.h"
 
 
 //pins: all in gpio pin numbers
@@ -31,6 +32,9 @@
 //important variables
 static String state = "";
 static String state_description = "System is initializing";
+
+//decider variables
+static float maxDirectionOffset = 15; //degrees
 
 void setup() {
   state = "setup";
@@ -98,8 +102,9 @@ void setup() {
 void loop() {
   state = "running";
 
+  // Loop logging
   static unsigned long lastLogTime = 0;
-  if (millis() - lastLogTime >= 5000) {
+  if (millis() - lastLogTime >= 10000) {
     writeToLog("system.csv", String(millis()) + ",SYSTEM,LOOP_RUNNING,0,System main loop running - State: " + state + ", Description: " + state_description);
     lastLogTime = millis();
   }
@@ -107,7 +112,18 @@ void loop() {
   // // Update sensor data
   // updateBno055Data();
   updateGps();
-  // float distance = getDistanceCm();
+  // float distance = getDistanceCm(); //ultrasonic
+
+  // Position estimation
+  PositionData currentPos = getPositionData();
+  PositionData targetPos = getTargetPosition();
+  float targetDirection = estimateTargetDirection(currentPos, targetPos);
+  float distanceToTarget = calculateDistanceToTarget(currentPos, targetPos);
+  
+  // Decision making
+  if (abs(targetDirection - currentPos.heading) > maxDirectionOffset) {
+    // Take corrective action
+  }
 
   // // logs are made within other codes indivisulally
   // // no need to log here
@@ -134,5 +150,6 @@ void loop() {
                    String(currentGpsData.lastUpdate);
   writeToLog("gps_data.csv", gpswriteBuffer);
 
-  delay(100); // Adjust delay as needed for your application
+  //buffer
+  delay(100);
 }
