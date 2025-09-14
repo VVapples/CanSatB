@@ -69,4 +69,19 @@ GpsData getGpsData();
  */
 bool isGpsModuleDetected();
 
+/**
+ * @brief Optimized GPS initialization for independent power GPS modules.
+ * This function handles the complete GPS setup process including:
+ * - Hardware serial setup
+ * - Detection of already active GPS
+ * - Conditional configuration (only if needed)
+ * - Status reporting and logging
+ * @param txPin The microcontroller pin that sends data TO the GPS RX pin.
+ * @param rxPin The microcontroller pin that receives data FROM the GPS TX pin.
+ * @param updateRate GPS update rate in Hz (1-10 Hz supported).
+ * @param baudRate Serial communication baud rate (default 9600).
+ * @return Returns true if GPS initialization was successful, false otherwise.
+ */
+bool initializeGpsWithIndependentPower(int txPin, int rxPin, int updateRate = 1, uint32_t baudRate = 9600);
+
 #endif // GPS_H

@@ -64,30 +64,15 @@ void setup() {
   // }
 
   // GPS
-  writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,Starting GPS initialization");
-  setupGps(GPS_TX_PIN, GPS_RX_PIN);
-  configureGps(1, 9600); // 1 Hz update rate, 9600 baud
-  delay(1000); // Give some time for GPS to start up
-  if (!updateGps()) {
-    state = "error";
-    state_description = "GPS initialization failed!";
-    writeToLog("system.csv", String(millis()) + ",GPS,INIT_FAILED,-1,GPS initialization failed!");
-    while (true) {
-      // Stay here forever if GPS fails to initialize
-      delay(1000);
-    }
+  bool gpsSuccess = initializeGpsWithIndependentPower(GPS_TX_PIN, GPS_RX_PIN, 1, 9600);
+  
+  if (gpsSuccess) {
+    state_description = "GPS ready with independent power";
   } else {
-    writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
+    state_description = "GPS not responding - check wiring";
   }
   
-  // writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initializeing begin");
-  // setupGps(GPS_TX_PIN, GPS_RX_PIN);
-  // writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
-  // configureGps(1, 9600); // 1 Hz update rate, 9600 baud
-  // writeToLog("system.csv", String(millis()) + ",GPS,CONFIG_SUCCESS,0,GPS configured successfully");
-
   // // Ultrasonic
-  //
   // if (!setupUltrasonic(ULTRASONIC_TRIGGER_PIN, ULTRASONIC_ECHO_PIN)) {
   //   state = "error";
   //   state_description = "Ultrasonic sensor initialization failed!";
@@ -115,20 +100,13 @@ void loop() {
     lastLogTime = millis();
   }
 
-  // // Update sensor data
-  // updateBno055Data();
+  // Update GPS data
   updateGps();
-  // float distance = getDistanceCm();
 
-  // // logs are made within other codes indivisulally
-  // // no need to log here
-
-  //debugging
-
-  writeLogHeaders("gps_data.csv", "timestamp,latitude,longitude,altitude,hasFix,moduleDetected,satelliteCount,hdop,fixQuality,fixType,speed,course,timeValid,date,time,lastUpdate");
+  // Log GPS data efficiently (headers only written once during setup)
   GpsData currentGpsData = getGpsData();
-  static String gpswriteBuffer = "";
-  gpswriteBuffer = "" + String(millis()) + "," +
+  
+  String gpswriteBuffer = String(millis()) + "," +
                    String(currentGpsData.latitude, 6) + "," +
                    String(currentGpsData.longitude, 6) + "," +
                    String(currentGpsData.altitude, 2) + "," +
@@ -145,6 +123,15 @@ void loop() {
                    String(currentGpsData.time) + "," +
                    String(currentGpsData.lastUpdate);
   writeToLog("gps_data.csv", gpswriteBuffer);
+
+  // Show GPS status on Serial every 5 seconds
+  static unsigned long lastSerialUpdate = 0;
+  if (millis() - lastSerialUpdate >= 5000) {
+    Serial.println("GPS Status - Fix: " + String(currentGpsData.hasFix ? "YES" : "NO") + 
+                   ", Satellites: " + String(currentGpsData.satelliteCount) + 
+                   ", Module: " + String(currentGpsData.moduleDetected ? "OK" : "NOT DETECTED"));
+    lastSerialUpdate = millis();
+  }
 
   
   delay(100); // Adjust delay as needed for your application
