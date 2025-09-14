@@ -22,7 +22,7 @@ static bool moduleDetected = false;
 static uint32_t detectionTimeout = 10000; // 10 seconds timeout
 
 // Implementation of the setupGps function
-bool setupGps(int txPin, int rxPin) {
+void setupGps(int txPin, int rxPin) {
   // For ESP32, use HardwareSerial. SERIAL_8N1 is the default config.
   int serialnum = 1; // Default to Serial1 (Pin 9/10)
   // Check pin combinations to determine which HardwareSerial to use
@@ -43,11 +43,6 @@ bool setupGps(int txPin, int rxPin) {
   
   // Wait a moment for GPS module to initialize
   delay(1000);
-
-  if (isGpsModuleDetected()) { // Initial detection check
-    return true;
-  }
-  return false;
 }
 
 // MTK3339-specific configuration commands for Ultimate GPS v3
@@ -88,13 +83,15 @@ void configureGps(int updateRate, uint32_t baudRate) {
     
     // Restart serial with new baud rate
     gpsSerial->end();
+    delay(100);
     gpsSerial->begin(baudRate, SERIAL_8N1);
   }
-  
+
   // Enable specific NMEA sentences for optimal data (RMC + GGA + GSA + GSV)
-  gpsSerial->print("$PMTK314,0,1,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n");
+  // gpsSerial->print("$PMTK314,0,1,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n");
   delay(100);
 }
+
 // Enhanced implementation of the updateGps function for Ultimate GPS v3
 bool updateGps() {
   bool newData = false;

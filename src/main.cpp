@@ -34,6 +34,8 @@ static String state_description = "System is initializing";
 
 void setup() {
   state = "setup";
+  Serial.begin(115200);
+  Serial.println("starting");
 
   //SDcard setup : if failed with errors
   if (!setupSdLogger(SD_CD_PIN)) {
@@ -62,7 +64,11 @@ void setup() {
   // }
 
   // GPS
-  if (!setupGps(GPS_TX_PIN, GPS_RX_PIN)) {
+  writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,Starting GPS initialization");
+  setupGps(GPS_TX_PIN, GPS_RX_PIN);
+  configureGps(1, 9600); // 1 Hz update rate, 9600 baud
+  delay(1000); // Give some time for GPS to start up
+  if (!updateGps()) {
     state = "error";
     state_description = "GPS initialization failed!";
     writeToLog("system.csv", String(millis()) + ",GPS,INIT_FAILED,-1,GPS initialization failed!");
@@ -72,9 +78,14 @@ void setup() {
     }
   } else {
     writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
-    configureGps(1, 9600); // 1 Hz update rate, 9600 baud
   }
   
+  // writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initializeing begin");
+  // setupGps(GPS_TX_PIN, GPS_RX_PIN);
+  // writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
+  // configureGps(1, 9600); // 1 Hz update rate, 9600 baud
+  // writeToLog("system.csv", String(millis()) + ",GPS,CONFIG_SUCCESS,0,GPS configured successfully");
+
   // // Ultrasonic
   //
   // if (!setupUltrasonic(ULTRASONIC_TRIGGER_PIN, ULTRASONIC_ECHO_PIN)) {
@@ -114,6 +125,7 @@ void loop() {
 
   //debugging
 
+  writeLogHeaders("gps_data.csv", "timestamp,latitude,longitude,altitude,hasFix,moduleDetected,satelliteCount,hdop,fixQuality,fixType,speed,course,timeValid,date,time,lastUpdate");
   GpsData currentGpsData = getGpsData();
   static String gpswriteBuffer = "";
   gpswriteBuffer = "" + String(millis()) + "," +
@@ -134,5 +146,6 @@ void loop() {
                    String(currentGpsData.lastUpdate);
   writeToLog("gps_data.csv", gpswriteBuffer);
 
+  
   delay(100); // Adjust delay as needed for your application
 }
