@@ -192,13 +192,11 @@ bool isGpsModuleDetected() {
 bool initializeGpsWithIndependentPower(int txPin, int rxPin, int updateRate, uint32_t baudRate) {
   // Log initialization start
   writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,GPS has independent power - optimized startup");
-  Serial.println("GPS: Independent power detected - using optimized startup");
   
   // Setup GPS hardware connection
   setupGps(txPin, rxPin);
   
   // Quick check if GPS is already active (5 second test)
-  Serial.println("GPS: Checking if GPS is already active...");
   bool gpsAlreadyActive = false;
   for (int i = 0; i < 5; i++) {
     yield();
@@ -207,11 +205,9 @@ bool initializeGpsWithIndependentPower(int txPin, int rxPin, int updateRate, uin
     
     if (gpsData.moduleDetected) {
       gpsAlreadyActive = true;
-      Serial.println("GPS: Already active and sending data!");
       writeToLog("system.csv", String(millis()) + ",GPS,ALREADY_ACTIVE,0,GPS already active with independent power");
       
       if (gpsData.hasFix) {
-        Serial.println("GPS: Still has previous fix! Satellites: " + String(gpsData.satelliteCount));
         writeToLog("system.csv", String(millis()) + ",GPS,RETAINED_FIX,0,GPS retained fix from before ESP32 restart");
       }
       break;
@@ -221,13 +217,11 @@ bool initializeGpsWithIndependentPower(int txPin, int rxPin, int updateRate, uin
   
   // Only configure if GPS isn't already working optimally
   if (!gpsAlreadyActive) {
-    Serial.println("GPS: Not responding - applying configuration...");
     configureGps(updateRate, baudRate);
     writeToLog("system.csv", String(millis()) + ",GPS,APPLYING_CONFIG,0,GPS not active - applying configuration");
     delay(3000); // Wait for GPS to respond to configuration
   } else {
     // GPS was already active - minimal wait for library to sync
-    Serial.println("GPS: Allowing TinyGPS++ library to sync with data stream...");
     delay(3000); // Just enough time for library to parse a few sentences
   }
   
@@ -238,8 +232,6 @@ bool initializeGpsWithIndependentPower(int txPin, int rxPin, int updateRate, uin
   if (finalGpsData.moduleDetected) {
     writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS ready - Fix: " + 
                String(finalGpsData.hasFix ? "YES" : "NO") + ", Sats: " + String(finalGpsData.satelliteCount));
-    Serial.println("GPS: Ready! Fix: " + String(finalGpsData.hasFix ? "YES" : "NO") + 
-                   ", Satellites: " + String(finalGpsData.satelliteCount));
     
     // Setup GPS data logging headers (done once here, not in loop)
     writeLogHeaders("gps_data.csv", "timestamp,latitude,longitude,altitude,hasFix,moduleDetected,satelliteCount,hdop,fixQuality,fixType,speed,course,timeValid,date,time,lastUpdate");
@@ -247,7 +239,6 @@ bool initializeGpsWithIndependentPower(int txPin, int rxPin, int updateRate, uin
     return true; // Success
   } else {
     writeToLog("system.csv", String(millis()) + ",GPS,INIT_WARNING,0,GPS not responding - will continue anyway");
-    Serial.println("GPS: WARNING - Not responding. System will continue anyway.");
     
     // Still setup headers for potential future GPS data
     writeLogHeaders("gps_data.csv", "timestamp,latitude,longitude,altitude,hasFix,moduleDetected,satelliteCount,hdop,fixQuality,fixType,speed,course,timeValid,date,time,lastUpdate");

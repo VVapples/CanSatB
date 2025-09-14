@@ -30,12 +30,12 @@
 
 //important variables
 static String state = "";
-static String state_description = "System is initializing";
+static String state_description = "";
 
 void setup() {
   state = "setup";
+  state_description = "System is setting up";
   Serial.begin(115200);
-  Serial.println("starting");
 
   //SDcard setup : if failed with errors
   if (!setupSdLogger(SD_CD_PIN)) {
@@ -53,25 +53,30 @@ void setup() {
 
   // Other sensor setups
 
-  // // BNO055
-  // if (!setupBno055()) {
-  //   state = "error";
-  //   state_description = "BNO055 initialization failed!";
-  //   while (true) {
-  //     // Stay here forever if BNO055 fails to initialize
-  //     delay(1000);
-  //   }
-  // }
+  // BNO055
+  if (!setupBno055()) {
+    state = "error";
+    state_description = "BNO055 initialization failed!";
+    while (true) {
+      // Stay here forever if BNO055 fails to initialize
+      delay(1000);
+    }
+  } else {
+    writeToLog("system.csv", String(millis()) + ",BNO055,INIT_SUCCESS,0,BNO055 initialized successfully");
+  }
 
   // GPS
-  bool gpsSuccess = initializeGpsWithIndependentPower(GPS_TX_PIN, GPS_RX_PIN, 1, 9600);
-  
-  if (gpsSuccess) {
-    state_description = "GPS ready with independent power";
+  if (!initializeGpsWithIndependentPower(GPS_TX_PIN, GPS_RX_PIN, 1, 9600)) {
+    state = "error";
+    state_description = "GPS initialization failed!";
+    while (true) {
+      // Stay here forever if GPS fails to initialize
+      delay(1000);
+    }
   } else {
-    state_description = "GPS not responding - check wiring";
+    writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
   }
-  
+
   // // Ultrasonic
   // if (!setupUltrasonic(ULTRASONIC_TRIGGER_PIN, ULTRASONIC_ECHO_PIN)) {
   //   state = "error";
@@ -124,15 +129,5 @@ void loop() {
                    String(currentGpsData.lastUpdate);
   writeToLog("gps_data.csv", gpswriteBuffer);
 
-  // Show GPS status on Serial every 5 seconds
-  static unsigned long lastSerialUpdate = 0;
-  if (millis() - lastSerialUpdate >= 5000) {
-    Serial.println("GPS Status - Fix: " + String(currentGpsData.hasFix ? "YES" : "NO") + 
-                   ", Satellites: " + String(currentGpsData.satelliteCount) + 
-                   ", Module: " + String(currentGpsData.moduleDetected ? "OK" : "NOT DETECTED"));
-    lastSerialUpdate = millis();
-  }
-
-  
   delay(100); // Adjust delay as needed for your application
 }

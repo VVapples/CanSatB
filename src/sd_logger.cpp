@@ -58,8 +58,6 @@ void writeToLog(const String& filename, const String& data) {
     logFile.close();
   }
 
-  //debug
-  Serial.println("Data written to: " + filePath + ", Written:" + data);
 }
 
 void writeLogHeaders(const String& filename, const String& headers) {
