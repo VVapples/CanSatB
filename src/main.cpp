@@ -1,123 +1,78 @@
 #include <Arduino.h>
-#include "9axis.h"
 #include "gps.h"
-#include "sd_logger.h"
-#include "ultrasonic.h"
+// Commented out SD logger to isolate GPS issue
+// #include "sd_logger.h"
 
-
-//pins: all in gpio pin numbers
-#define BNO055_SDA_PIN 7 // D0
-#define BNO055_SCL_PIN 8 // D1
-
-#define GPS_TX_PIN 10 // D3 - ESP32 transmits to GPS RX
-#define GPS_RX_PIN 9 // D2 - ESP32 receives from GPS TX
-
-#define ULTRASONIC_TRIGGER_PIN 1
-#define ULTRASONIC_ECHO_PIN 3
-
-#define SD_CD_PIN 5
-#define SD_CMD_PIN 23
-#define SD_CLK_PIN 18
-#define SD_DATA0_PIN 19
-
-#define Motor_AIN1_PIN nullptr //setlater
-#define Motor_AIN2_PIN nullptr //setlater
-#define Motor_BIN1_PIN nullptr //setlater
-#define Motor_BIN2_PIN nullptr //setlater
-
-#define LED_PIN nullptr //setlater
-
-
-//important variables
-static String state = "";
-static String state_description = "System is initializing";
+// GPS only version to avoid memory corruption from SD operations
+static bool sdCardAvailable = false;
 
 void setup() {
-  // Note: Serial removed to free up UART for other modules
-  state = "setup";
-
-  //SDcard setup : if failed with errors
-  if (!setupSdLogger(SD_CD_PIN)) {
-    state = "error";
-    state_description = "SD Card initialization failed!";
-    // Can't log to SD if SD failed, so halt
-    while (true) {
-      delay(1000);
-    }
-  } else {
-    // setup logging headers
-    writeLogHeaders("system.csv", "timestamp,state,code,message");
-    writeLogHeaders("debug.csv", "timestamp,module,event,code,message");
-    
-    writeToLog("system.csv", String(millis()) + ",SD,INIT_SUCCESS,0,SD card initialized successfully");
-    writeToLog("debug.csv", String(millis()) + ",MAIN,SETUP_START,0,CanSat System Starting");
-  }
-
-  // Other sensor setups
-  // // BNO055
-  // if (!setupBno055()) {
-  //   state = "error";
-  //   state_description = "BNO055 initialization failed!";
-  //   while (true) {
-  //     // Stay here forever if BNO055 fails to initialize
-  //     delay(1000);
-  //   }
-  // }
-
-  // GPS setup with crash protection
-  writeToLog("debug.csv", String(millis()) + ",MAIN,GPS_INIT_START,0,Starting GPS initialization");
+  Serial.begin(115200);
+  delay(2000);
+  Serial.println("=== CanSat System Starting ===");
+  Serial.println("GPS ONLY MODE - SD card disabled to prevent memory corruption");
   
+  yield();
+  delay(500);
+  
+  Serial.println("Initializing GPS...");
+  
+  // Initialize GPS with proper error handling
   try {
-    setupGps(GPS_TX_PIN, GPS_RX_PIN); // ESP32_TX=10, ESP32_RX=9
-    writeToLog("debug.csv", String(millis()) + ",MAIN,GPS_SETUP_RESULT,0,GPS setup completed");
-    writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
-    writeToLog("debug.csv", String(millis()) + ",MAIN,GPS_SUCCESS,0,GPS initialization completed successfully");
+    setupGps(9, 10); // TX=9, RX=10 (working pin order)
+    Serial.println("GPS hardware initialized");
+    
+    yield();
+    delay(200);
+    
+    Serial.println("Configuring GPS...");
+    configureGps(1, 9600);
+    Serial.println("GPS configuration complete");
+    
   } catch (...) {
-    state = "error";
-    state_description = "GPS initialization crashed!";
-    writeToLog("system.csv", String(millis()) + ",GPS,INIT_CRASHED,-2,GPS initialization caused system crash");
-    writeToLog("debug.csv", String(millis()) + ",MAIN,GPS_CRASH,0,GPS initialization caused a crash!");
-    while (true) {
-      delay(1000);
-    }
+    Serial.println("ERROR: GPS initialization failed!");
   }
   
-  // // Ultrasonic
-  //
-  // if (!setupUltrasonic(ULTRASONIC_TRIGGER_PIN, ULTRASONIC_ECHO_PIN)) {
-  //   state = "error";
-  //   state_description = "Ultrasonic sensor initialization failed!";
-  //   writeToLog("system.csv", String(millis()) + ",ULTRASONIC,INIT_FAILED,-1,Ultrasonic sensor initialization failed!");
-  //   while (true) {
-  //     // Stay here forever if Ultrasonic sensor fails to initialize
-  //     delay(1000);
-  //   }
-  // } else {
-  //   writeToLog("system.csv", String(millis()) + ",ULTRASONIC,INIT_SUCCESS,0,Ultrasonic sensor initialized successfully");
-  // }
-
-  // // Log system startup completion
-  // state = "ready";
-  // state_description = "All systems initialized successfully";
-  // writeToLog("system.csv", String(millis()) + ",SYSTEM,STARTUP_COMPLETE,0,All sensors initialized and system ready");
+  Serial.println("Setup complete - entering main loop");
 }
 
 void loop() {
-  // Add debug output to track loop execution
-  static uint32_t lastDebugOutput = 0;
-  if (millis() - lastDebugOutput > 5000) { // Every 5 seconds
-    writeToLog("system.csv", String(millis()) + ",LOOP,RUNNING,0,Main loop executing");
-    writeToLog("debug.csv", String(millis()) + ",MAIN,LOOP_ALIVE,0,Loop running - system operational");
-    lastDebugOutput = millis();
+  // Feed watchdog regularly
+  yield();
+  
+  static uint32_t lastStatus = 0;
+  static bool gpsDetected = false;
+  
+  if (updateGps()) {
+    gpsDetected = true;
+    GpsData data = getGpsData();
+    
+    // Print GPS info to Serial
+    Serial.println("\n=== GPS UPDATE ===");
+    if (data.hasFix) {
+      Serial.printf("Position: %.6f°, %.6f°\n", data.latitude, data.longitude);
+      Serial.printf("Altitude: %.2f m\n", data.altitude);
+      Serial.printf("Speed: %.2f km/h\n", data.speed);
+      Serial.printf("Satellites: %d\n", data.satelliteCount);
+      Serial.printf("HDOP: %.2f\n", data.hdop);
+    } else {
+      Serial.println("Status: No GPS fix");
+      Serial.printf("Satellites visible: %d\n", data.satelliteCount);
+    }
+    Serial.println("----------------------------------------");
   }
   
-  // Safely update GPS with error handling
-  try {
-    updateGps();
-  } catch (...) {
-    writeToLog("system.csv", String(millis()) + ",GPS,UPDATE_ERROR,-1,Exception in GPS update");
-    writeToLog("debug.csv", String(millis()) + ",MAIN,GPS_UPDATE_ERROR,0,Exception in updateGps() - continuing");
+  // Status check every 5 seconds
+  if (millis() - lastStatus > 5000) {
+    lastStatus = millis();
+    Serial.println("System alive - " + String(millis()) + "ms");
+    
+    if (!isGpsModuleDetected()) {
+      Serial.println("GPS module not detected");
+    } else if (!gpsDetected) {
+      Serial.println("GPS module detected, waiting for satellite fix...");
+    }
   }
-
-  delay(100); // Adjust delay as needed for your application
+  
+  delay(1000);
 }
