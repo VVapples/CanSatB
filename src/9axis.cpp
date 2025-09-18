@@ -49,11 +49,14 @@ bool setupBno055() {
   return true;
 }
 
-void updateBno055Data() {
+bool updateBno055Data() {
   // Don't try to read data if the sensor isn't initialized.
   if (!bno055Initialized) {
-    return;
+    return false;
   }
+
+  // Store previous data to detect changes
+  Bno055Data previousData = currentBno055Data;
 
   // Get sensor events for different data types
   sensors_event_t accelEvent, gyroEvent, magEvent, linearAccelEvent, gravityEvent;
@@ -104,33 +107,66 @@ void updateBno055Data() {
   // Get temperature
   currentBno055Data.temperature = bno.getTemp();
   
-  // Log sensor data to SD card
-  String dataEntry = String(millis()) + "," +
-                    String(currentBno055Data.accelX, 3) + "," +
-                    String(currentBno055Data.accelY, 3) + "," +
-                    String(currentBno055Data.accelZ, 3) + "," +
-                    String(currentBno055Data.gyroX, 2) + "," +
-                    String(currentBno055Data.gyroY, 2) + "," +
-                    String(currentBno055Data.gyroZ, 2) + "," +
-                    String(currentBno055Data.magX, 1) + "," +
-                    String(currentBno055Data.magY, 1) + "," +
-                    String(currentBno055Data.magZ, 1) + "," +
-                    String(currentBno055Data.pitch, 2) + "," +
-                    String(currentBno055Data.roll, 2) + "," +
-                    String(currentBno055Data.heading, 2) + "," +
-                    String(currentBno055Data.temperature, 1) + "," +
-                    String(currentBno055Data.quatW, 4) + "," +
-                    String(currentBno055Data.quatX, 4) + "," +
-                    String(currentBno055Data.quatY, 4) + "," +
-                    String(currentBno055Data.quatZ, 4) + "," +
-                    String(currentBno055Data.linearAccelX, 3) + "," +
-                    String(currentBno055Data.linearAccelY, 3) + "," +
-                    String(currentBno055Data.linearAccelZ, 3) + "," +
-                    String(currentBno055Data.gravityX, 3) + "," +
-                    String(currentBno055Data.gravityY, 3) + "," +
-                    String(currentBno055Data.gravityZ, 3);
+  // Check if we have new/valid data by comparing with previous data
+  // BNO055 should always provide some data, but we check for sensor readiness
+  bool hasNewData = true; // Assume new data unless sensor fails
   
-  writeToLog("bno055_data.csv", dataEntry);
+  // Basic sanity check - if all readings are exactly 0, sensor might not be responding
+  if (currentBno055Data.accelX == 0.0 && currentBno055Data.accelY == 0.0 && currentBno055Data.accelZ == 0.0 &&
+      currentBno055Data.gyroX == 0.0 && currentBno055Data.gyroY == 0.0 && currentBno055Data.gyroZ == 0.0 &&
+      currentBno055Data.magX == 0.0 && currentBno055Data.magY == 0.0 && currentBno055Data.magZ == 0.0) {
+    hasNewData = false;
+  }
+  
+  // Additional check: if data is exactly the same as previous reading and seems unrealistic
+  if (hasNewData && 
+      previousData.accelX == currentBno055Data.accelX && 
+      previousData.accelY == currentBno055Data.accelY && 
+      previousData.accelZ == currentBno055Data.accelZ &&
+      previousData.gyroX == currentBno055Data.gyroX && 
+      previousData.gyroY == currentBno055Data.gyroY && 
+      previousData.gyroZ == currentBno055Data.gyroZ) {
+    static int sameDataCount = 0;
+    sameDataCount++;
+    // If we get identical data more than 10 times, sensor might be stuck
+    if (sameDataCount > 10) {
+      hasNewData = false;
+      sameDataCount = 0; // Reset counter
+    }
+  }
+  
+  // Only log data if we have valid new data
+  if (hasNewData) {
+    // Log sensor data to SD card
+    String dataEntry = String(millis()) + "," +
+                      String(currentBno055Data.accelX, 3) + "," +
+                      String(currentBno055Data.accelY, 3) + "," +
+                      String(currentBno055Data.accelZ, 3) + "," +
+                      String(currentBno055Data.gyroX, 2) + "," +
+                      String(currentBno055Data.gyroY, 2) + "," +
+                      String(currentBno055Data.gyroZ, 2) + "," +
+                      String(currentBno055Data.magX, 1) + "," +
+                      String(currentBno055Data.magY, 1) + "," +
+                      String(currentBno055Data.magZ, 1) + "," +
+                      String(currentBno055Data.pitch, 2) + "," +
+                      String(currentBno055Data.roll, 2) + "," +
+                      String(currentBno055Data.heading, 2) + "," +
+                      String(currentBno055Data.temperature, 1) + "," +
+                      String(currentBno055Data.quatW, 4) + "," +
+                      String(currentBno055Data.quatX, 4) + "," +
+                      String(currentBno055Data.quatY, 4) + "," +
+                      String(currentBno055Data.quatZ, 4) + "," +
+                      String(currentBno055Data.linearAccelX, 3) + "," +
+                      String(currentBno055Data.linearAccelY, 3) + "," +
+                      String(currentBno055Data.linearAccelZ, 3) + "," +
+                      String(currentBno055Data.gravityX, 3) + "," +
+                      String(currentBno055Data.gravityY, 3) + "," +
+                      String(currentBno055Data.gravityZ, 3);
+    
+    writeToLog("bno055_data.csv", dataEntry);
+  }
+  
+  return hasNewData;
 }
 
 Bno055Data getBno055Data() {

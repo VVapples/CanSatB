@@ -171,6 +171,25 @@ bool updateGps() {
       currentGpsData.fixType = 1;    // No fix
     }
     
+    //logging
+    String gpswriteBuffer = String(millis()) + "," +
+                   String(currentGpsData.latitude, 6) + "," +
+                   String(currentGpsData.longitude, 6) + "," +
+                   String(currentGpsData.altitude, 2) + "," +
+                   String(currentGpsData.hasFix ? 1 : 0) + "," +
+                   String(currentGpsData.moduleDetected ? 1 : 0) + "," +
+                   String(currentGpsData.satelliteCount) + "," +
+                   String(currentGpsData.hdop, 2) + "," +
+                   String(currentGpsData.fixQuality) + "," +
+                   String(currentGpsData.fixType) + "," +
+                   String(currentGpsData.speed, 2) + "," +
+                   String(currentGpsData.course, 2) + "," +
+                   String(currentGpsData.timeValid ? 1 : 0) + "," +
+                   String(currentGpsData.date) + "," +
+                   String(currentGpsData.time) + "," +
+                   String(currentGpsData.lastUpdate);
+  writeToLog("gps_data.csv", gpswriteBuffer);
+
     return true; // New data was processed
   }
 

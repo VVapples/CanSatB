@@ -54,8 +54,9 @@ bool setupBno055();
 /**
  * @brief Reads all current data from the sensor and stores it internally.
  * Call this in every iteration of your main loop().
+ * @return true if new data was successfully read from the sensor, false otherwise.
  */
-void updateBno055Data();
+bool updateBno055Data();
 
 /**
  * @brief Gets the most recently read sensor data.

@@ -3,6 +3,7 @@
 #include "gps.h"
 #include "sd_logger.h"
 #include "ultrasonic.h"
+#include "pose_est.h"
 
 
 //pins: all in gpio pin numbers
@@ -32,6 +33,27 @@
 static String state = "";
 static String state_description = "";
 
+// Initialize BNO055 data structure with default values
+Bno055Data bnoData = {
+  0.0, 0.0, 0.0,        // accelX, accelY, accelZ
+  0.0, 0.0, 0.0,        // gyroX, gyroY, gyroZ  
+  0.0, 0.0, 0.0,        // magX, magY, magZ
+  0.0,                  // temperature
+  0.0, 0.0, 0.0,        // pitch, roll, heading
+  1.0, 0.0, 0.0, 0.0,   // quatW, quatX, quatY, quatZ (identity quaternion)
+  0.0, 0.0, 0.0,        // linearAccelX, linearAccelY, linearAccelZ
+  0.0, 0.0, 0.0         // gravityX, gravityY, gravityZ
+};
+
+// Initialize GPS data structure with default values
+GpsData gpsData = {
+  0.0, 0.0, 0.0,        // latitude, longitude, altitude
+  false, false, 0,      // hasFix, moduleDetected, satelliteCount
+  99.99, 0, 1,          // hdop (high = poor), fixQuality, fixType
+  0.0, 0.0,             // speed, course
+  false, 0, 0,          // timeValid, date, time
+  0                     // lastUpdate
+};
 void setup() {
   state = "setup";
   state_description = "System is setting up";
@@ -90,44 +112,57 @@ void setup() {
   //   writeToLog("system.csv", String(millis()) + ",ULTRASONIC,INIT_SUCCESS,0,Ultrasonic sensor initialized successfully");
   // }
 
-  // // Log system startup completion
-  // state = "ready";
-  // state_description = "All systems initialized successfully";
-  // writeToLog("system.csv", String(millis()) + ",SYSTEM,STARTUP_COMPLETE,0,All sensors initialized and system ready");
+  // Initialize pose logging
+  setupPoseLogging();
+
+  // Log system startup completion
+  state_description = "All systems initialized successfully";
+  writeToLog("system.csv", String(millis()) + ",SYSTEM,STARTUP_COMPLETE,0,All sensors initialized and system ready");
 }
 
 void loop() {
   state = "running";
 
+  // Periodic logging
   static unsigned long lastLogTime = 0;
   if (millis() - lastLogTime >= 5000) {
     writeToLog("system.csv", String(millis()) + ",SYSTEM,LOOP_RUNNING,0,System main loop running - State: " + state + ", Description: " + state_description);
     lastLogTime = millis();
   }
 
-  // Update GPS data
-  updateGps();
+  // Update Sensor data
+  // Update BNO055 data
+  static unsigned long lastBnoUpdate = 0;
+  if (millis() - lastBnoUpdate >= 100) { // Update BNO055 every 100 ms
+    static bool bnoUpdated = false;
+    bnoUpdated = updateBno055Data();
+    lastBnoUpdate = millis();
+    if (bnoUpdated) {
+      Bno055Data bnoData = getBno055Data();
+    }
+  }
 
-  // Log GPS data efficiently (headers only written once during setup)
-  GpsData currentGpsData = getGpsData();
+  // Update GPS data
+  static unsigned long lastGpsUpdate = 0;
+  if (millis() - lastGpsUpdate >= 1000) { // Update GPS every second
+    static bool updated = false;
+    updated = updateGps();
+    lastGpsUpdate = millis();
+    if (updated) {
+      GpsData gpsData = getGpsData();
+    }
+  }
+
+  static unsigned long lastPoseLog = 0;
+  if (lastGpsUpdate > lastPoseLog || lastBnoUpdate > lastPoseLog) {
+    // Get current sensor data and calculate pose
+    GpsData currentGpsData = getGpsData();
+    Bno055Data currentBnoData = getBno055Data();
+    
+    Pose currentPose = getCurrentPose(currentGpsData, currentBnoData);
+    lastPoseLog = millis();
+  }
   
-  String gpswriteBuffer = String(millis()) + "," +
-                   String(currentGpsData.latitude, 6) + "," +
-                   String(currentGpsData.longitude, 6) + "," +
-                   String(currentGpsData.altitude, 2) + "," +
-                   String(currentGpsData.hasFix ? 1 : 0) + "," +
-                   String(currentGpsData.moduleDetected ? 1 : 0) + "," +
-                   String(currentGpsData.satelliteCount) + "," +
-                   String(currentGpsData.hdop, 2) + "," +
-                   String(currentGpsData.fixQuality) + "," +
-                   String(currentGpsData.fixType) + "," +
-                   String(currentGpsData.speed, 2) + "," +
-                   String(currentGpsData.course, 2) + "," +
-                   String(currentGpsData.timeValid ? 1 : 0) + "," +
-                   String(currentGpsData.date) + "," +
-                   String(currentGpsData.time) + "," +
-                   String(currentGpsData.lastUpdate);
-  writeToLog("gps_data.csv", gpswriteBuffer);
 
   delay(100); // Adjust delay as needed for your application
 }
