@@ -54,6 +54,7 @@ GpsData gpsData = {
   false, 0, 0,          // timeValid, date, time
   0                     // lastUpdate
 };
+
 void setup() {
   state = "setup";
   state_description = "System is setting up";
@@ -153,6 +154,7 @@ void loop() {
     }
   }
 
+  // Get current pose estimate
   static unsigned long lastPoseLog = 0;
   if (lastGpsUpdate > lastPoseLog || lastBnoUpdate > lastPoseLog) {
     // Get current sensor data and calculate pose
@@ -163,6 +165,8 @@ void loop() {
     lastPoseLog = millis();
   }
   
+  // Motor control and other operations would go here
 
+  
   delay(100); // Adjust delay as needed for your application
 }
