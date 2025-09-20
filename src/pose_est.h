@@ -120,4 +120,35 @@ Pose updatePoseEstimation(const GpsData& gpsData, const Bno055Data& bno055Data);
  */
 void setupPoseLogging();
 
+/**
+ * @brief Calculate target direction from current position to target position
+ * @param current_lat Current latitude in degrees
+ * @param current_lon Current longitude in degrees
+ * @param target_lat Target latitude in degrees
+ * @param target_lon Target longitude in degrees
+ * @return Direction to target in degrees (0-360)
+ */
+float estimateTargetDirection(float current_lat, float current_lon, float target_lat, float target_lon);
+
+/**
+ * @brief Calculate distance to target position
+ * @param current_lat Current latitude in degrees
+ * @param current_lon Current longitude in degrees
+ * @param target_lat Target latitude in degrees
+ * @param target_lon Target longitude in degrees
+ * @return Distance to target in meters
+ */
+float calculateDistanceToTarget(float current_lat, float current_lon, float target_lat, float target_lon);
+
+/**
+ * @brief Get target position from SD card file
+ * @return PositionData structure with target coordinates
+ */
+struct PositionData {
+  float latitude;
+  float longitude;
+};
+
+PositionData getTargetPosition();
+
 #endif // POSE_EST_H

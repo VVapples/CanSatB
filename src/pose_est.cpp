@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include "sd_logger.h"
 #include <math.h>
+#include <SD.h>
 
 // Constants
 #define DEG_TO_RAD 0.017453292519943295
@@ -34,6 +35,24 @@ const float GPS_HDOP_THRESHOLD = 20.0;   // GPS quality threshold - Lower = stri
 
 // Confidence Calculation
 const float CONFIDENCE_SCALE = 100.0;    // Confidence scaling factor - Lower = more sensitive confidence
+
+// =============================================================================
+// PERFORMANCE OPTIMIZATIONS FOR ESP32
+// =============================================================================
+
+// Reduce update frequency for heavy operations
+const unsigned long EKF_UPDATE_INTERVAL_MS = 100;  // 10Hz instead of loop frequency
+const unsigned long GPS_UPDATE_INTERVAL_MS = 200;  // 5Hz for GPS updates
+const unsigned long MAG_UPDATE_INTERVAL_MS = 50;   // 20Hz for magnetometer
+const unsigned long LOG_INTERVAL_MS = 500;         // 2Hz for data logging
+
+// Simplified matrix operations flag
+#define USE_SIMPLIFIED_EKF 0  // Set to 1 for faster, less accurate EKF (future feature)
+
+// Reduced precision for logging (saves processing time)
+const int GPS_LOG_PRECISION = 6;    // Decimal places for lat/lon
+const int FLOAT_LOG_PRECISION = 1;  // Decimal places for other floats
+const int CONF_LOG_PRECISION = 2;   // Decimal places for confidence
 
 // =============================================================================
 
@@ -306,6 +325,9 @@ void initializePoseEstimation() {
 Pose updatePoseEstimation(const GpsData& gpsData, const Bno055Data& bno055Data) {
   static bool initialized = false;
   static unsigned long lastTime = 0;
+  static unsigned long lastGpsUpdate = 0;
+  static unsigned long lastMagUpdate = 0;
+  static unsigned long lastLogTime = 0;
   
   unsigned long currentTime = millis();
   
@@ -315,6 +337,9 @@ Pose updatePoseEstimation(const GpsData& gpsData, const Bno055Data& bno055Data) 
     ekf.initialize(gpsData.latitude, gpsData.longitude, bno055Data.heading);
     initialized = true;
     lastTime = currentTime;
+    lastGpsUpdate = currentTime;
+    lastMagUpdate = currentTime;
+    lastLogTime = currentTime;
   }
   
   if (!initialized) {
@@ -323,28 +348,39 @@ Pose updatePoseEstimation(const GpsData& gpsData, const Bno055Data& bno055Data) 
     return pose;
   }
   
-  // Predict step with IMU data
-  if (currentTime > lastTime) {
-    float dt_ms = currentTime - lastTime;
+  // Throttle EKF updates to reduce CPU load
+  if (currentTime - lastTime < EKF_UPDATE_INTERVAL_MS) {
+    return ekf.getPoseEstimate(); // Return cached estimate
+  }
+  
+  // Predict step with IMU data (only if enough time has passed)
+  float dt_ms = currentTime - lastTime;
+  if (dt_ms > 0) {
     ekf.predict(bno055Data.linearAccelX, bno055Data.linearAccelY, 
                 bno055Data.gyroZ * DEG_TO_RAD, dt_ms);
   }
   
-  // Update step with GPS data
-  bool gpsValid = gpsData.hasFix && gpsData.moduleDetected && 
-                  gpsData.latitude != 0.0 && gpsData.longitude != 0.0 &&
-                  gpsData.hdop < GPS_HDOP_THRESHOLD;
-  
-  if (gpsValid) {
-    ekf.updateGPS(gpsData.latitude, gpsData.longitude, true);
+  // Update step with GPS data (throttled)
+  if (currentTime - lastGpsUpdate >= GPS_UPDATE_INTERVAL_MS) {
+    bool gpsValid = gpsData.hasFix && gpsData.moduleDetected && 
+                    gpsData.latitude != 0.0 && gpsData.longitude != 0.0 &&
+                    gpsData.hdop < GPS_HDOP_THRESHOLD;
+    
+    if (gpsValid) {
+      ekf.updateGPS(gpsData.latitude, gpsData.longitude, true);
+      lastGpsUpdate = currentTime;
+    }
   }
   
-  // Update step with magnetometer heading
-  bool magValid = (bno055Data.quatW != 1.0 || bno055Data.quatX != 0.0 || 
-                   bno055Data.quatY != 0.0 || bno055Data.quatZ != 0.0);
-  
-  if (magValid) {
-    ekf.updateHeading(bno055Data.heading, true);
+  // Update step with magnetometer heading (throttled)
+  if (currentTime - lastMagUpdate >= MAG_UPDATE_INTERVAL_MS) {
+    bool magValid = (bno055Data.quatW != 1.0 || bno055Data.quatX != 0.0 || 
+                     bno055Data.quatY != 0.0 || bno055Data.quatZ != 0.0);
+    
+    if (magValid) {
+      ekf.updateHeading(bno055Data.heading, true);
+      lastMagUpdate = currentTime;
+    }
   }
   
   lastTime = currentTime;
@@ -352,23 +388,85 @@ Pose updatePoseEstimation(const GpsData& gpsData, const Bno055Data& bno055Data) 
   // Get pose estimate
   Pose pose = ekf.getPoseEstimate();
   
-  // Log the pose data
-  String poseLogData = String(currentTime) + "," +
-                       String(pose.latitude, 7) + "," +
-                       String(pose.longitude, 7) + "," +
-                       String(pose.heading, 2) + "," +
-                       String(pose.speed, 2) + "," +
-                       String(pose.x, 2) + "," +
-                       String(pose.y, 2) + "," +
-                       String(pose.confidence, 3) + "," +
-                       String(gpsValid ? 1 : 0) + "," +
-                       String(magValid ? 1 : 0);
-  
-  writeToLog("pose_data.csv", poseLogData);
+  // Throttle logging to reduce SD card writes and processing
+  if (currentTime - lastLogTime >= LOG_INTERVAL_MS) {
+    bool gpsValid = gpsData.hasFix && gpsData.moduleDetected && 
+                    gpsData.latitude != 0.0 && gpsData.longitude != 0.0 &&
+                    gpsData.hdop < GPS_HDOP_THRESHOLD;
+    bool magValid = (bno055Data.quatW != 1.0 || bno055Data.quatX != 0.0 || 
+                     bno055Data.quatY != 0.0 || bno055Data.quatZ != 0.0);
+    
+    String poseLogData = String(currentTime) + "," +
+                         String(pose.latitude, GPS_LOG_PRECISION) + "," +
+                         String(pose.longitude, GPS_LOG_PRECISION) + "," +
+                         String(pose.heading, FLOAT_LOG_PRECISION) + "," +
+                         String(pose.speed, FLOAT_LOG_PRECISION) + "," +
+                         String(pose.x, FLOAT_LOG_PRECISION) + "," +
+                         String(pose.y, FLOAT_LOG_PRECISION) + "," +
+                         String(pose.confidence, CONF_LOG_PRECISION) + "," +
+                         String(gpsValid ? 1 : 0) + "," +
+                         String(magValid ? 1 : 0);
+    
+    writeToLog("pose_data.csv", poseLogData);
+    lastLogTime = currentTime;
+  }
   
   return pose;
 }
 
 void setupPoseLogging() {
   writeLogHeaders("pose_data.csv", "timestamp,latitude,longitude,heading,speed,x,y,confidence,gps_valid,mag_valid");
+}
+
+// Navigation helper functions
+float estimateTargetDirection(float current_lat, float current_lon, float target_lat, float target_lon) {
+  float deltaY = (target_lat - current_lat) * DEG_TO_RAD;
+  float deltaX = (target_lon - current_lon) * DEG_TO_RAD * cos(current_lat * DEG_TO_RAD);
+  float angle = atan2(deltaY, deltaX) * RAD_TO_DEG;
+  
+  // Convert from mathematical angle to compass bearing (0 = North)
+  angle = 90.0 - angle;
+  
+  // Ensure the angle is within the range [0, 360)
+  if (angle < 0) {
+    angle += 360.0;
+  }
+  if (angle >= 360.0) {
+    angle -= 360.0;
+  }
+  
+  return angle;
+}
+
+float calculateDistanceToTarget(float current_lat, float current_lon, float target_lat, float target_lon) {
+  float lat1 = current_lat * DEG_TO_RAD;
+  float lat2 = target_lat * DEG_TO_RAD;
+  float deltaLat = (target_lat - current_lat) * DEG_TO_RAD;
+  float deltaLon = (target_lon - current_lon) * DEG_TO_RAD;
+  
+  float a = sin(deltaLat / 2) * sin(deltaLat / 2) +
+            cos(lat1) * cos(lat2) *
+            sin(deltaLon / 2) * sin(deltaLon / 2);
+  float c = 2 * atan2(sqrt(a), sqrt(1 - a));
+  
+  return EARTH_RADIUS * c; // Distance in meters
+}
+
+PositionData getTargetPosition() {
+  PositionData targetPos = {0.0, 0.0};
+  
+  File file = SD.open("target_pos.csv", FILE_READ);
+  if (file) {
+    String line = file.readStringUntil('\n');
+    int commaIndex = line.indexOf(',');
+    
+    if (commaIndex != -1) {
+      targetPos.latitude = line.substring(0, commaIndex).toFloat();
+      targetPos.longitude = line.substring(commaIndex + 1).toFloat();
+    }
+    
+    file.close();
+  }
+  
+  return targetPos;
 }
