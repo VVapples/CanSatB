@@ -179,54 +179,103 @@ class CameraViewer:
     def stream_receiver(self):
         """Receive and process camera stream from ESP32"""
         frame_buffer = bytearray()
+        frame_state = "waiting_header"
         frame_size = 0
-        receiving_frame = False
+        bytes_received = 0
+        cmd_byte = 0
         frame_count = 0
         fps_start_time = time.time()
+        crc_xor = 0x00
+        
+        # Frame protocol constants
+        PACK_FIRST_BYTE = 0xAA
+        PACK_SECOND_BYTE = 0x55
         
         while self.is_connected:
             try:
                 if self.serial_port.in_waiting > 0:
-                    line = self.serial_port.readline().decode('utf-8', errors='ignore').strip()
+                    data = self.serial_port.read(self.serial_port.in_waiting)
                     
-                    if line.startswith("STREAM_START"):
-                        self.is_streaming = True
-                        self.log_message("Stream started")
-                    
-                    elif line.startswith("FRAME_START:"):
-                        frame_size = int(line.split(':')[1])
-                        frame_buffer = bytearray()
-                        receiving_frame = True
-                        
-                    elif line.startswith("DATA:") and receiving_frame:
-                        hex_data = line[5:]  # Remove "DATA:" prefix
-                        # Convert hex string to bytes
-                        for i in range(0, len(hex_data), 2):
-                            if i + 1 < len(hex_data):
-                                byte_val = int(hex_data[i:i+2], 16)
+                    for byte_val in data:
+                        if frame_state == "waiting_header":
+                            if byte_val == PACK_FIRST_BYTE:
+                                frame_state = "waiting_second_byte"
+                                frame_buffer = bytearray()
                                 frame_buffer.append(byte_val)
-                    
-                    elif line == "FRAME_END" and receiving_frame:
-                        receiving_frame = False
-                        if len(frame_buffer) > 0:
-                            # Process completed frame
-                            self.process_frame(bytes(frame_buffer))
-                            frame_count += 1
+                                
+                        elif frame_state == "waiting_second_byte":
+                            frame_buffer.append(byte_val)
+                            if byte_val == PACK_SECOND_BYTE:
+                                frame_state = "waiting_length"
+                                bytes_received = 0
+                                frame_size = 0
+                            else:
+                                frame_state = "waiting_header"
+                                
+                        elif frame_state == "waiting_length":
+                            frame_buffer.append(byte_val)
+                            if bytes_received == 0:
+                                frame_size = (byte_val << 24)
+                            elif bytes_received == 1:
+                                frame_size |= (byte_val << 16)
+                            elif bytes_received == 2:
+                                frame_size |= (byte_val << 8)
+                            elif bytes_received == 3:
+                                frame_size |= byte_val
                             
-                            # Calculate FPS every 10 frames
-                            if frame_count % 10 == 0:
-                                elapsed = time.time() - fps_start_time
-                                fps = 10 / elapsed
-                                self.root.after(0, lambda: self.fps_label.config(text=f"FPS: {fps:.1f}"))
-                                fps_start_time = time.time()
-                    
-                    elif line.startswith("FRAME_ERROR"):
-                        self.log_message(f"Camera error: {line}")
-                    
-                    elif self.is_streaming:
-                        # Log other messages during streaming
-                        if line and not line.startswith("DATA:"):
-                            self.log_message(f"Camera: {line}")
+                            bytes_received += 1
+                            if bytes_received >= 4:
+                                frame_state = "waiting_length_crc"
+                                
+                        elif frame_state == "waiting_length_crc":
+                            frame_buffer.append(byte_val)
+                            # Calculate CRC for length bytes
+                            crc_xor = 0x00 ^ frame_buffer[2] ^ frame_buffer[3] ^ frame_buffer[4] ^ frame_buffer[5]
+                            if crc_xor == byte_val:
+                                if frame_size > 50000 or frame_size < 2:  # Sanity check
+                                    frame_state = "waiting_header"
+                                    self.log_message(f"Invalid frame size: {frame_size}")
+                                else:
+                                    frame_state = "waiting_cmd"
+                            else:
+                                frame_state = "waiting_header"
+                                self.log_message(f"Length CRC mismatch: expected {crc_xor}, got {byte_val}")
+                                
+                        elif frame_state == "waiting_cmd":
+                            frame_buffer.append(byte_val)
+                            cmd_byte = byte_val
+                            frame_state = "waiting_data"
+                            bytes_received = 0
+                            
+                        elif frame_state == "waiting_data":
+                            frame_buffer.append(byte_val)
+                            bytes_received += 1
+                            if bytes_received >= (frame_size - 2):  # -2 for cmd and final CRC
+                                frame_state = "waiting_final_crc"
+                                
+                        elif frame_state == "waiting_final_crc":
+                            frame_buffer.append(byte_val)
+                            # Calculate final CRC for entire frame
+                            crc_xor = 0x00
+                            for i in range(len(frame_buffer) - 1):
+                                crc_xor ^= frame_buffer[i]
+                            
+                            if crc_xor == byte_val:
+                                # Complete frame received - extract JPEG data
+                                jpeg_data = frame_buffer[7:-1]  # Skip header, length, length_crc, cmd, and final_crc
+                                self.process_jpeg_frame(bytes(jpeg_data))
+                                frame_count += 1
+                                
+                                # Calculate FPS every 5 frames
+                                if frame_count % 5 == 0:
+                                    elapsed = time.time() - fps_start_time
+                                    fps = 5 / elapsed if elapsed > 0 else 0
+                                    self.root.after(0, lambda: self.fps_label.config(text=f"FPS: {fps:.1f}"))
+                                    fps_start_time = time.time()
+                            else:
+                                self.log_message(f"Final CRC mismatch: expected {crc_xor}, got {byte_val}")
+                            
+                            frame_state = "waiting_header"
                 
                 time.sleep(0.001)  # Small delay to prevent 100% CPU usage
                 
@@ -234,19 +283,29 @@ class CameraViewer:
                 self.log_message(f"Stream error: {str(e)}")
                 break
     
-    def process_frame(self, frame_data):
-        """Process received frame data and queue for display"""
+    def process_jpeg_frame(self, frame_data):
+        """Process received JPEG frame data and queue for display"""
         try:
-            # For now, just display as a pattern or try to interpret as image
-            # This is where you'd add specific image format parsing
-            
             if len(frame_data) > 100:  # Only process if we have substantial data
-                # Try to create a simple visualization of the raw data
-                self.image_queue.put(frame_data)
-                self.log_message(f"Received frame: {len(frame_data)} bytes")
+                # Try to decode as JPEG
+                try:
+                    img = Image.open(io.BytesIO(frame_data))
+                    # Successfully decoded JPEG
+                    self.image_queue.put(img)
+                    self.log_message(f"Received JPEG frame: {len(frame_data)} bytes, {img.size}")
+                except Exception as e:
+                    # If JPEG decode fails, log the error but continue
+                    self.log_message(f"JPEG decode failed ({len(frame_data)} bytes): {str(e)}")
+                    
+                    # Try to display as raw data pattern for debugging
+                    self.image_queue.put(frame_data)
             
         except Exception as e:
             self.log_message(f"Frame processing error: {str(e)}")
+    
+    def process_frame(self, frame_data):
+        """Legacy method - redirects to JPEG processing"""
+        self.process_jpeg_frame(frame_data)
     
     def update_images(self):
         """Update image display from queue (runs in main thread)"""
@@ -255,25 +314,36 @@ class CameraViewer:
                 # Check for new frames
                 frame_data = self.image_queue.get(timeout=0.1)
                 
-                # Create a simple visualization of the data
-                # Since we don't know the exact image format, create a pattern
-                width = min(320, int(len(frame_data) ** 0.5))
-                height = len(frame_data) // width
-                
-                if width > 0 and height > 0:
-                    # Create grayscale image from raw data
-                    img_data = list(frame_data[:width * height])
-                    if len(img_data) < width * height:
-                        img_data.extend([0] * (width * height - len(img_data)))
+                if isinstance(frame_data, Image.Image):
+                    # It's already a PIL Image (JPEG decoded successfully)
+                    display_img = frame_data
                     
-                    img = Image.new('L', (width, height))
-                    img.putdata(img_data)
-                    
-                    # Resize for display
-                    display_img = img.resize((320, 240), Image.Resampling.NEAREST)
+                    # Resize for display if needed
+                    if display_img.size[0] > 640 or display_img.size[1] > 480:
+                        display_img.thumbnail((640, 480), Image.Resampling.LANCZOS)
                     
                     # Convert to PhotoImage and display
                     self.root.after(0, self.display_image, display_img)
+                    
+                else:
+                    # It's raw data - create a visualization pattern
+                    width = min(320, int(len(frame_data) ** 0.5))
+                    height = len(frame_data) // width if width > 0 else 1
+                    
+                    if width > 0 and height > 0:
+                        # Create grayscale image from raw data
+                        img_data = list(frame_data[:width * height])
+                        if len(img_data) < width * height:
+                            img_data.extend([0] * (width * height - len(img_data)))
+                        
+                        img = Image.new('L', (width, height))
+                        img.putdata(img_data)
+                        
+                        # Resize for display
+                        display_img = img.resize((320, 240), Image.Resampling.NEAREST)
+                        
+                        # Convert to PhotoImage and display
+                        self.root.after(0, self.display_image, display_img)
                 
             except queue.Empty:
                 continue
