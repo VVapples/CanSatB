@@ -1,6 +1,8 @@
 #ifndef CALCULATIONS_H
 #define CALCULATIONS_H
 
+#include "pose_est.h"  // For Pose structure
+
 /**
  * GPS and Navigation Calculations Library
  * 
@@ -28,5 +30,17 @@ double calculateDistance(double lat1, double lon1, double lat2, double lon2);
  * @return Bearing in degrees (0-360, where 0 is North)
  */
 double calculateBearing(double lat1, double lon1, double lat2, double lon2);
+
+/**
+ * Calculate how far off the current heading is from pointing toward the target
+ * 
+ * @param currentPose Current pose containing latitude, longitude, and heading
+ * @param targetPose Target pose containing latitude and longitude (heading ignored)
+ * @return Heading error in degrees (-180 to +180)
+ *         0 = heading directly toward target
+ *         Positive = need to turn right (clockwise)
+ *         Negative = need to turn left (counter-clockwise)
+ */
+double calculateHeadingError(const Pose& currentPose, const Pose& targetPose);
 
 #endif // CALCULATIONS_H

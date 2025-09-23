@@ -86,3 +86,31 @@ double calculateBearing(double lat1, double lon1, double lat2, double lon2) {
     
     return bearing_deg;
 }
+
+/**
+ * Calculate how far off the current heading is from pointing toward the target
+ * Uses Pose structures for convenience
+ */
+double calculateHeadingError(const Pose& currentPose, const Pose& targetPose) {
+    // Calculate the required bearing to reach the target
+    double required_bearing = calculateBearing(
+        currentPose.latitude, 
+        currentPose.longitude, 
+        targetPose.latitude, 
+        targetPose.longitude
+    );
+    
+    // Calculate the heading error
+    double heading_error = required_bearing - currentPose.heading;
+    
+    // Normalize the error to the range [-180, +180]
+    // This ensures we always take the shortest angular path
+    while (heading_error > 180.0) {
+        heading_error -= 360.0;
+    }
+    while (heading_error < -180.0) {
+        heading_error += 360.0;
+    }
+    
+    return heading_error;
+}

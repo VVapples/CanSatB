@@ -41,6 +41,10 @@ static const float TARGET_REACHED_THRESHOLD = 2.0; // in meters
 //important variables
 static String state = "";
 static String state_description = "";
+static double distanceToTarget = 0.0;
+static double headingError = 0.0;
+static unsigned int turnCycle = 0;
+static unsigned int turnCycleTimes = 0;
 
 // Initialize BNO055 data structure with default values
 Bno055Data bnoData = {
@@ -138,6 +142,7 @@ void setup() {
   // Initialize motors with pin assignments from main.cpp
   setupMotors(MOTOR_STBY, MOTOR_A_PWM, MOTOR_A_IN1, MOTOR_A_IN2, MOTOR_B_PWM, MOTOR_B_IN1, MOTOR_B_IN2);
   writeToLog("system.csv", String(millis()) + ",MOTOR,INIT_SUCCESS,0,Motors initialized successfully");
+  writeLogHeaders("control.csv", "timestamp,action_description");
 
   // Initialize pose logging
   setupPoseLogging();
@@ -247,48 +252,107 @@ void loop() {
 
   //state decider
   static unsigned long lastStateChangeTime = 0;
+  distanceToTarget = calculateDistance(currentPose.latitude, currentPose.longitude, targetCoordinates.latitude, targetCoordinates.longitude);
   if (millis() - lastStateChangeTime > 10000) {  // Evaluate state every 10 seconds
     lastStateChangeTime = millis();
-    static double distanceToTarget = calculateDistance(currentPose.latitude, currentPose.longitude, targetCoordinates.latitude, targetCoordinates.longitude);
-    if (state == "startup!" && distanceToTarget > CLOSEIN_START_THRESHOLD) {
+    if (state == "setup" && distanceToTarget > CLOSEIN_START_THRESHOLD) {
       state = "approach";
       state_description = "Searching for target - distance to target: " + String(distanceToTarget, 2) + " meters";
       writeToLog("system.csv", String(millis()) + ",STATE,APPROACH,0,Transitioning to APPROACH state - distance to target: " + String(distanceToTarget, 2) + " meters");
     } else if (state == "approach" && distanceToTarget > TARGET_REACHED_THRESHOLD) {
       state = "closeIn";
       state_description = "Approaching target - distance to target: " + String(distanceToTarget, 2) + " meters";
+      writeToLog("system.csv", String(millis()) + ",STATE,CLOSEIN,0,Transitioning to CLOSEIN state - distance to target: " + String(distanceToTarget, 2) + " meters");
     } else {
       state = "arrived";
       state_description = "Arrived at target location - distance to target: " + String(distanceToTarget, 2) + " meters";
+      writeToLog("system.csv", String(millis()) + ",STATE,ARRIVED,0,Transitioning to ARRIVED state - distance to target: " + String(distanceToTarget, 2) + " meters");
+      stopAllMotors();
+      writeToLog("control.csv", String(millis()) + ",Motors stopped - Arrived at target");
+      while (true) {
+        // Stay here forever if arrived
+        delay(1000);
+      }
     }
   } 
 
   // Motor control and other operations would go here
 
   //some random motor control for testing
-  static unsigned long motorTestCycle = 0;
-  static unsigned long lastMotorTestTime = 0;
-  if (millis() - lastMotorTestTime > 5000) { // every 5 seconds
-    lastMotorTestTime = millis();
-    if (motorTestCycle == 0) {
-      motorTestCycle = 1;
-      exitStandby();
-      motorWrite('A', 100); // Move forward at half speed
-    } else if (motorTestCycle == 1) {
-      motorTestCycle = 2;
-      motorWrite('A', -100); // Move backward at half speed
-      motorWrite('B', 100);  // Turn in place
-    } else if (motorTestCycle == 2) {
-      motorTestCycle = 3;
-      motorWrite('A', 100); // Turn in place
-      motorWrite('B', 100);
-    } else if (motorTestCycle == 3) {
-      motorTestCycle = 0;
-      enterStandby(); // Stop motors
+  if (state == "approach") {
+    headingError = calculateHeadingError(currentPose, targetCoordinates);
+    if (abs(headingError) > 30) {
+      if (headingError > 0) {
+        //turn right
+        motorWrite('A', -100);
+        motorWrite('B', 100);
+        headingError = calculateHeadingError(currentPose, targetCoordinates);
+        writeToLog("control.csv", String(millis()) + ",Turning right to correct heading - Error: " + String(headingError, 2) + " degrees");
+      } else {
+        // Turn left
+        motorWrite('A', 100);
+        motorWrite('B', -100);
+        headingError = calculateHeadingError(currentPose, targetCoordinates);
+        writeToLog("control.csv", String(millis()) + ",Turning left to correct heading - Error: " + String(headingError, 2) + " degrees");
+      }
+    } else {
+      // Move forward with some direction correction
+      motorWrite('A', 150 + int(headingError));
+      motorWrite('B', 150 - int(headingError));
+      writeToLog("control.csv", String(millis()) + ",Moving forward towards target - Heading error: " + String(headingError, 2) + " degrees");
     }
-    motorTestCycle++;
+  } else if (state == "closeIn") {
+    float distance = getDistanceCm();
+    if (distance <= 0 || distance > 400) { // Assuming 400 cm is the max range
+      // cycle limiter
+      if (turnCycleTimes >= 3) {
+        // After several cycles, stop and log error
+        motorWrite('A', 0);
+        motorWrite('B', 0);
+        writeToLog("control.csv", String(millis()) + ",Ultrasonic sensor failure - motors stopped");
+        state = "error";
+        state_description = "Ultrasonic sensor failure - motors stopped";
+        writeToLog("system.csv", String(millis()) + ",ULTRASONIC,FAILURE,-1,Ultrasonic sensor failed to detect target after multiple attempts - motors stopped");
+        while (true) {
+          delay(1000); // Stay here forever
+        }
+      } else {
+        // Timeout or invalid reading - try turning to find target
+        writeToLog("control.csv", String(millis()) + ",Ultrasonic timeout or invalid reading - attempting to reorient");
+      }
+      // adjusting direction untill ultrasonic detects something
+      if (turnCycle <= 2) {
+        // turn right
+        motorWrite('A', -100);
+        motorWrite('B', 100);
+        writeToLog("control.csv", String(millis()) + ",Turning right to find target - Ultrasonic distance invalid");
+        turnCycle++;
+      } else if (turnCycle >= 3 && turnCycle <= 5) {
+        // turn left
+        motorWrite('A', 100);
+        motorWrite('B', -100);
+        writeToLog("control.csv", String(millis()) + ",Turning left to find target - Ultrasonic distance invalid");
+        turnCycle++;
+      } else {
+        turnCycle = 0; // reset cycle
+        turnCycleTimes++;
+      } 
+    } else {
+      // Valid distance reading - move forward
+      motorWrite('A', 100);
+      motorWrite('B', 100);
+      writeToLog("control.csv", String(millis()) + ",Moving forward - Ultrasonic distance: " + String(distance, 2) + " cm");
+      // Reset cycle counters
+      turnCycle = 0;
+      turnCycleTimes = 0;
+    }
+  } else if (state == "arrived") {
+    // fallback for when state check fails to stop program
+    stopAllMotors();
+    writeToLog("control.csv", String(millis()) + ",Motors stopped - Arrived at target ### LOGIC ERROR");
+    delay(1000); // Just to avoid spamming the log (wait for state change logic to stop program)
   }
-  
 
+  
   delay(100); // debounce
 }
