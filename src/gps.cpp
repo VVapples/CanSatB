@@ -213,14 +213,18 @@ bool initializeGpsWithIndependentPower(int txPin, int rxPin, int updateRate, uin
   writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,GPS has independent power - optimized startup");
   
   // Setup GPS hardware connection
+  writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,1"); //###delete later
   setupGps(txPin, rxPin);
-  
+  writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,2"); //###delete later
   // Quick check if GPS is already active (5 second test)
   bool gpsAlreadyActive = false;
   for (int i = 0; i < 5; i++) {
     yield();
+    writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,3"); //###delete later
     updateGps();
+    writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,4"); //###delete later
     GpsData gpsData = getGpsData();
+    writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,5"); //###delete later
     
     if (gpsData.moduleDetected) {
       gpsAlreadyActive = true;
