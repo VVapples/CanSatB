@@ -6,7 +6,7 @@
 
 // The serial connection to the GPS module
 // We use static to keep these variables private to this file.
-static HardwareSerial* gpsSerial = nullptr; // Will be initialized in setupGps
+static HardwareSerial gpsSerial(1); // Will be initialized in setupGps
 
 // The TinyGPS++ object that parses GPS data
 static TinyGPSPlus gps;
@@ -14,7 +14,7 @@ static TinyGPSPlus gps;
 // The structure that holds our latest GPS data
 static GpsData currentGpsData;
 
-// GPS module's default baud rate (Ultimate GPS v3 default)
+// GPS module's default baud rate
 static const uint32_t GPS_BAUD_RATE = 9600;
 
 // Module detection variables
@@ -23,74 +23,17 @@ static bool moduleDetected = false;
 static uint32_t detectionTimeout = 10000; // 10 seconds timeout
 
 // Implementation of the setupGps function
-void setupGps(int txPin, int rxPin) {
-  // For ESP32, use HardwareSerial. SERIAL_8N1 is the default config.
-  int serialnum = 1; // Default to Serial1 (Pin 9/10)
-  // Check pin combinations to determine which HardwareSerial to use
-  if ((txPin == 1 && rxPin == 3) || (txPin == 3 && rxPin == 1)) {
-    serialnum = 0; // Serial0 (USB serial)
-  } else if ((txPin == 17 && rxPin == 16) || (txPin == 16 && rxPin == 17)) {
-    serialnum = 2; // Serial2
-  }
-  // Serial1 uses pins 9/10 by default, so keep serialnum = 1 for other combinations
-  gpsSerial = new HardwareSerial(serialnum);
-  gpsSerial->begin(GPS_BAUD_RATE, SERIAL_8N1, rxPin, txPin);
-  
-  // Initialize GPS data structure with default values
-  currentGpsData = {0}; // Zero-initialize all fields
-  currentGpsData.moduleDetected = false;
-  currentGpsData.hasFix = false;
-  currentGpsData.timeValid = false;
-  
-  // Wait a moment for GPS module to initialize
-  delay(1000);
+bool setupGps(int txPin, int rxPin) {
+  gpsSerial.begin(GPS_BAUD_RATE, SERIAL_8N1, rxPin, txPin);
+  delay(1000); // Allow time for the GPS module to initialize
+  lastDataReceived = millis();
+  moduleDetected = false;
+  writeLogHeaders("gps_data.csv", "timestamp,latitude,longitude,altitude,hasFix,moduleDetected,satelliteCount,hdop,fixQuality,fixType,speed,course,timeValid,date,time,lastUpdate");
+  return true;
 }
 
 // MTK3339-specific configuration commands for Ultimate GPS v3
 void configureGps(int updateRate, uint32_t baudRate) {
-  if (gpsSerial == nullptr) return;
-  
-  // MTK3339 command to set update rate (1-10 Hz)
-  if (updateRate >= 1 && updateRate <= 10) {
-    uint16_t period = 1000 / updateRate; // Convert Hz to milliseconds
-    char rateCmd[50];
-    sprintf(rateCmd, "$PMTK220,%d*", period);
-    
-    // Calculate checksum
-    uint8_t checksum = 0;
-    for (int i = 1; i < strlen(rateCmd) - 1; i++) {
-      checksum ^= rateCmd[i];
-    }
-    sprintf(rateCmd + strlen(rateCmd) - 1, "%02X\r\n", checksum);
-    
-    gpsSerial->print(rateCmd);
-    delay(100);
-  }
-  
-  // MTK3339 command to set baud rate (if different from current)
-  if (baudRate != GPS_BAUD_RATE) {
-    char baudCmd[50];
-    sprintf(baudCmd, "$PMTK251,%lu*", baudRate);
-    
-    // Calculate checksum
-    uint8_t checksum = 0;
-    for (int i = 1; i < strlen(baudCmd) - 1; i++) {
-      checksum ^= baudCmd[i];
-    }
-    sprintf(baudCmd + strlen(baudCmd) - 1, "%02X\r\n", checksum);
-    
-    gpsSerial->print(baudCmd);
-    delay(100);
-    
-    // Restart serial with new baud rate
-    gpsSerial->end();
-    delay(100);
-    gpsSerial->begin(baudRate, SERIAL_8N1);
-  }
-
-  // Enable specific NMEA sentences for optimal data (RMC + GGA + GSA + GSV)
-  // gpsSerial->print("$PMTK314,0,1,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n");
-  delay(100);
 }
 
 // Enhanced implementation of the updateGps function for Ultimate GPS v3
@@ -98,8 +41,8 @@ bool updateGps() {
   bool newData = false;
   
   // Read all available characters from the GPS serial port
-  while (gpsSerial->available() > 0) {
-    char c = gpsSerial->read();
+  while (gpsSerial.available() > 0) {
+    char c = gpsSerial.read();
     if (gps.encode(c)) {
       lastDataReceived = millis();
       moduleDetected = true;
@@ -114,84 +57,56 @@ bool updateGps() {
   
   currentGpsData.moduleDetected = moduleDetected;
 
-  // TinyGPS++ updates its internal state with every character.
-  // Check if location data has been updated
-  if (gps.location.isUpdated() || gps.date.isUpdated() || gps.time.isUpdated()) {
-    currentGpsData.lastUpdate = millis();
-    
-    // Location data
-    if (gps.location.isValid()) {
-      currentGpsData.hasFix = true;
-      currentGpsData.latitude = gps.location.lat();
-      currentGpsData.longitude = gps.location.lng();
-    } else {
-      currentGpsData.hasFix = false;
-    }
-    
-    // Altitude data
-    if (gps.altitude.isValid()) {
-      currentGpsData.altitude = gps.altitude.meters();
-    }
-    
-    // Satellite and quality data
-    if (gps.satellites.isValid()) {
-      currentGpsData.satelliteCount = gps.satellites.value();
-    }
-    
-    // Dilution of Precision data
-    if (gps.hdop.isValid()) {
-      currentGpsData.hdop = gps.hdop.hdop();
-    }
-    
-    // Speed and course data (Ultimate GPS v3 provides this)
-    if (gps.speed.isValid()) {
-      currentGpsData.speed = gps.speed.kmph(); // Speed in km/h
-    }
-    
-    if (gps.course.isValid()) {
-      currentGpsData.course = gps.course.deg(); // Course in degrees
-    }
-    
-    // Time and date data
-    if (gps.date.isValid() && gps.time.isValid()) {
-      currentGpsData.timeValid = true;
-      currentGpsData.date = gps.date.value(); // Format: ddmmyy
-      currentGpsData.time = gps.time.value(); // Format: hhmmsscc
-    } else {
-      currentGpsData.timeValid = false;
-    }
-    
-    // Fix quality information (extracted from internal TinyGPS++ data)
-    // Note: TinyGPS++ doesn't directly expose fix quality, but we can infer it
-    if (gps.location.isValid()) {
-      currentGpsData.fixQuality = 1; // GPS fix (assume standard GPS)
-      currentGpsData.fixType = 3;    // 3D fix (assume 3D if we have location + altitude)
-    } else {
-      currentGpsData.fixQuality = 0; // Invalid
-      currentGpsData.fixType = 1;    // No fix
-    }
-    
-    //logging
-    String gpswriteBuffer = String(millis()) + "," +
-                   String(currentGpsData.latitude, 6) + "," +
-                   String(currentGpsData.longitude, 6) + "," +
-                   String(currentGpsData.altitude, 2) + "," +
-                   String(currentGpsData.hasFix ? 1 : 0) + "," +
-                   String(currentGpsData.moduleDetected ? 1 : 0) + "," +
-                   String(currentGpsData.satelliteCount) + "," +
-                   String(currentGpsData.hdop, 2) + "," +
-                   String(currentGpsData.fixQuality) + "," +
-                   String(currentGpsData.fixType) + "," +
-                   String(currentGpsData.speed, 2) + "," +
-                   String(currentGpsData.course, 2) + "," +
-                   String(currentGpsData.timeValid ? 1 : 0) + "," +
-                   String(currentGpsData.date) + "," +
-                   String(currentGpsData.time) + "," +
-                   String(currentGpsData.lastUpdate);
-  writeToLog("gps_data.csv", gpswriteBuffer);
+  // Always update GPS data regardless of validity
+  currentGpsData.lastUpdate = millis();
+  
+  // Location data - always assign
+  currentGpsData.hasFix = gps.location.isValid();
+  currentGpsData.latitude = gps.location.lat();
+  currentGpsData.longitude = gps.location.lng();
+  
+  // Altitude data - always assign
+  currentGpsData.altitude = gps.altitude.meters();
+  
+  // Satellite and quality data - always assign
+  currentGpsData.satelliteCount = gps.satellites.value();
+  
+  // Dilution of Precision data - always assign
+  currentGpsData.hdop = gps.hdop.hdop();
+  
+  // Speed and course data - always assign
+  currentGpsData.speed = gps.speed.kmph(); // Speed in km/h
+  currentGpsData.course = gps.course.deg(); // Course in degrees
+  
+  // Time and date data - always assign
+  currentGpsData.timeValid = gps.date.isValid() && gps.time.isValid();
+  currentGpsData.date = gps.date.value(); // Format: ddmmyy
+  currentGpsData.time = gps.time.value(); // Format: hhmmsscc
+  
+  // Fix quality information - always assign
+  currentGpsData.fixQuality = gps.location.isValid() ? 1 : 0;
+  currentGpsData.fixType = gps.location.isValid() ? 3 : 1;
+  
+  //logging
+  String gpswriteBuffer = String(millis()) + "," +
+                 String(currentGpsData.latitude, 6) + "," +
+                 String(currentGpsData.longitude, 6) + "," +
+                 String(currentGpsData.altitude, 2) + "," +
+                 String(currentGpsData.hasFix ? 1 : 0) + "," +
+                 String(currentGpsData.moduleDetected ? 1 : 0) + "," +
+                 String(currentGpsData.satelliteCount) + "," +
+                 String(currentGpsData.hdop, 2) + "," +
+                 String(currentGpsData.fixQuality) + "," +
+                 String(currentGpsData.fixType) + "," +
+                 String(currentGpsData.speed, 2) + "," +
+                 String(currentGpsData.course, 2) + "," +
+                 String(currentGpsData.timeValid ? 1 : 0) + "," +
+                 String(currentGpsData.date) + "," +
+                 String(currentGpsData.time) + "," +
+                 String(currentGpsData.lastUpdate);
+writeToLog("gps_data.csv", gpswriteBuffer);
 
-    return true; // New data was processed
-  }
+  return true; // Always return true since we always update data
 
   return false; // No new location data
 }
@@ -209,63 +124,5 @@ bool isGpsModuleDetected() {
 
 // Optimized GPS initialization for independent power GPS modules
 bool initializeGpsWithIndependentPower(int txPin, int rxPin, int updateRate, uint32_t baudRate) {
-  // Log initialization start
-  writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,GPS has independent power - optimized startup");
-  
-  // Setup GPS hardware connection
-  writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,1"); //###delete later
-  setupGps(txPin, rxPin);
-  writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,2"); //###delete later
-  // Quick check if GPS is already active (5 second test)
-  bool gpsAlreadyActive = false;
-  for (int i = 0; i < 5; i++) {
-    yield();
-    writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,3"); //###delete later
-    updateGps();
-    writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,4"); //###delete later
-    GpsData gpsData = getGpsData();
-    writeToLog("system.csv", String(millis()) + ",GPS,INIT_BEGIN,0,5"); //###delete later
-    
-    if (gpsData.moduleDetected) {
-      gpsAlreadyActive = true;
-      writeToLog("system.csv", String(millis()) + ",GPS,ALREADY_ACTIVE,0,GPS already active with independent power");
-      
-      if (gpsData.hasFix) {
-        writeToLog("system.csv", String(millis()) + ",GPS,RETAINED_FIX,0,GPS retained fix from before ESP32 restart");
-      }
-      break;
-    }
-    delay(1000);
-  }
-  
-  // Only configure if GPS isn't already working optimally
-  if (!gpsAlreadyActive) {
-    configureGps(updateRate, baudRate);
-    writeToLog("system.csv", String(millis()) + ",GPS,APPLYING_CONFIG,0,GPS not active - applying configuration");
-    delay(3000); // Wait for GPS to respond to configuration
-  } else {
-    // GPS was already active - minimal wait for library to sync
-    delay(3000); // Just enough time for library to parse a few sentences
-  }
-  
-  // Final status check
-  updateGps();
-  GpsData finalGpsData = getGpsData();
-  
-  if (finalGpsData.moduleDetected) {
-    writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS ready - Fix: " + 
-               String(finalGpsData.hasFix ? "YES" : "NO") + ", Sats: " + String(finalGpsData.satelliteCount));
-    
-    // Setup GPS data logging headers (done once here, not in loop)
-    writeLogHeaders("gps_data.csv", "timestamp,latitude,longitude,altitude,hasFix,moduleDetected,satelliteCount,hdop,fixQuality,fixType,speed,course,timeValid,date,time,lastUpdate");
-    
-    return true; // Success
-  } else {
-    writeToLog("system.csv", String(millis()) + ",GPS,INIT_WARNING,0,GPS not responding - will continue anyway");
-    
-    // Still setup headers for potential future GPS data
-    writeLogHeaders("gps_data.csv", "timestamp,latitude,longitude,altitude,hasFix,moduleDetected,satelliteCount,hdop,fixQuality,fixType,speed,course,timeValid,date,time,lastUpdate");
-    
-    return false; // GPS not responding but system can continue
-  }
+  return true;
 }

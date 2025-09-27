@@ -115,7 +115,7 @@ void setup() {
   // }
 
   // GPS
-  if (!initializeGpsWithIndependentPower(GPS_TX_PIN, GPS_RX_PIN, 1, 9600)) {
+  if (!setupGps(GPS_TX_PIN, GPS_RX_PIN)) {
     state = "error";
     state_description = "GPS initialization failed!";
     while (true) {

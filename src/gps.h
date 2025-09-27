@@ -40,7 +40,7 @@ struct GpsData {
  * @param txPin The microcontroller pin that sends data TO the GPS RX pin.
  * @param rxPin The microcontroller pin that receives data FROM the GPS TX pin.
  */
-void setupGps(int txPin, int rxPin);
+bool setupGps(int txPin, int rxPin);
 
 /**
  * @brief Configures the GPS module with specific settings (MTK3339/Ultimate GPS v3).
