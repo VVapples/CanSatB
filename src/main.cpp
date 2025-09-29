@@ -1,6 +1,3 @@
-//FOR TESTING PURPOSES 
-//full logging and some motor control logic added
-
 #include <Arduino.h>
 #include "SD.h"
 #include "FS.h"
@@ -11,39 +8,9 @@
 #include "pose_est.h"
 #include "motor.h"
 #include "calculations.h"
-
-//pins: all in gpio pin numbers
-#define BNO055_SDA_PIN 7 // D0
-#define BNO055_SCL_PIN 8 // D1
-
-#define GPS_RX_PIN 10 // D3
-#define GPS_TX_PIN 9 // D2
-
-#define ULTRASONIC_TRIGGER_PIN   1
-#define ULTRASONIC_ECHO_PIN      3
-
-#define SD_CD_PIN      13
-#define SD_CMD_PIN     23
-#define SD_CLK_PIN     18
-#define SD_DATA0_PIN   19
-
-#define MOTOR_STBY    15    // Standby pin - LOW = standby, HIGH = active
-#define MOTOR_A_PWM   27    // Motor A PWM (speed control)
-#define MOTOR_A_IN1   12    // Motor A direction pin 1
-#define MOTOR_A_IN2   14    // Motor A direction pin 2
-#define MOTOR_B_PWM   33    // Motor B PWM (speed control)
-#define MOTOR_B_IN1   2     // Motor B direction pin 1
-#define MOTOR_B_IN2   4     // Motor B direction pin 2
-
-#define LED_PIN nullptr //setlater
-
-//operation related constants
-static const float CLOSEIN_START_THRESHOLD = 5.0; // in meters
-static const float TARGET_REACHED_THRESHOLD = 2.0; // in meters
-
-//important variables
-static String state = "";
-static String state_description = "";
+#include "task0.h"
+#include "task1.h"
+#include "CONSTANTS.h"
 
 // Initialize BNO055 data structure with default values
 Bno055Data bnoData = {
@@ -82,22 +49,54 @@ Pose targetCoordinates = {
 };
 
 void setup() {
-  state = "setup";
-  state_description = "System is setting up";
 
-  //SDcard setup : if failed with errors
-  if (!setupSdLogger(SD_CD_PIN)) {
-    state = "error";
-    state_description = "SD Card initialization failed!";
-    while (true) {
-      // Stay here forever if SD card fails to initialize
-      delay(1000);
-    }
-  } else {
-    // setup logging
-    writeLogHeaders("system.csv", "timestamp,state,code,message");
-    writeToLog("system.csv", String(millis()) + ",SD,INIT_SUCCESS,0,SD card initialized successfully");
-  }
+  
+
+  xTaskCreatePinnedToCore(
+    task0Loop,           // Task function
+    "LogWriter",         // Task name
+    4096,                // Stack size (bytes)
+    NULL,                // Parameters
+    1,                   // Priority (0-25, higher = more priority)
+    &task0Handle,        // Task handle
+    0                    // Core number (0)
+  );
+
+  xTaskCreatePinnedToCore(
+    task0Loop,           // Task function
+    "LogWriter",         // Task name
+    4096,                // Stack size (bytes)
+    NULL,                // Parameters
+    1,                   // Priority (0-25, higher = more priority)
+    &task1Handle,        // Task handle
+    0                    // Core number (0)
+  );
+
+    xTaskCreatePinnedToCore(
+    task0Loop,           // Task function
+    "LogWriter",         // Task name
+    4096,                // Stack size (bytes)
+    NULL,                // Parameters
+    1,                   // Priority (0-25, higher = more priority)
+    &task2Handle,        // Task handle
+    0                    // Core number (0)
+  );
+  // state = "setup";
+  // state_description = "System is setting up";
+
+  // //SDcard setup : if failed with errors
+  // if (!setupSdLogger(SD_CD_PIN)) {
+  //   state = "error";
+  //   state_description = "SD Card initialization failed!";
+  //   while (true) {
+  //     // Stay here forever if SD card fails to initialize
+  //     delay(1000);
+  //   }
+  // } else {
+  //   // setup logging
+  //   writeLogHeaders("system.csv", "timestamp,state,code,message");
+  //   writeToLog("system.csv", String(millis()) + ",SD,INIT_SUCCESS,0,SD card initialized successfully");
+  // }
 
   // Other sensor setups
 
@@ -193,19 +192,21 @@ void setup() {
   // }
   
   // Log system startup completion
-  state_description = "All systems initialized successfully";
-  writeToLog("system.csv", String(millis()) + ",SYSTEM,STARTUP_COMPLETE,0,All sensors initialized and system ready");
+  // state_description = "All systems initialized successfully";
+  // writeToLog("system.csv", String(millis()) + ",SYSTEM,STARTUP_COMPLETE,0,All sensors initialized and system ready");
 
 }
 
 void loop() {
 
+  //KEEP EMPTY
+
   // Periodic logging
-  static unsigned long lastLogTime = 0;
-  if (millis() - lastLogTime >= 5000) {
-    writeToLog("system.csv", String(millis()) + ",SYSTEM,LOOP_RUNNING,0,System main loop running - State: " + state + " | Description: " + state_description);
-    lastLogTime = millis();
-  }
+  // static unsigned long lastLogTime = 0;
+  // if (millis() - lastLogTime >= 5000) {
+  //   writeToLog("system.csv", String(millis()) + ",SYSTEM,LOOP_RUNNING,0,System main loop running - State: " + state + " | Description: " + state_description);
+  //   lastLogTime = millis();
+  // }
 
   // Update Sensor data
   // Update BNO055 data
@@ -295,5 +296,5 @@ void loop() {
   // }
   
 
-  delay(100); // debounce
+  delay(1000); // debounce
 }
