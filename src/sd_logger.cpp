@@ -51,13 +51,16 @@ void writeToLog(const String& filename, const String& data) {
   // exist and moves the cursor to the end.
   File logFile = SD.open(filePath, FILE_APPEND);
 
+  Serial.println("Logging to: " + filePath + " Data: " + data); // Debug output
+
+
   if (logFile) {
     // If the file opened successfully, write the data.
     logFile.println(data);
     // Close the file to save the data and prevent corruption.
     logFile.close();
   }
-
+  
 }
 
 void writeLogHeaders(const String& filename, const String& headers) {

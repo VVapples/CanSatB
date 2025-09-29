@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "led.h"
+#include "sd_logger.h"
 
 static int LED_PIN = -1; // Set to actual pin number if LED is used
 
@@ -8,6 +9,8 @@ void setupLed(int pin) {
     LED_PIN = pin;
     pinMode(pin, OUTPUT);
     digitalWrite(pin, LOW); // Turn off LED initially
+    writeLogHeaders("led.csv", "timestamp,message");
+    writeToLog("led.csv", String(millis()) + ",INIT_SUCCESS");
   }
 }
 
@@ -32,7 +35,9 @@ void dash() {
 void ledMessage(String message) {
     if (message == "error") {
         dot();
+        writeToLog("led.csv", String(millis()) + ",ERROR_SIGNAL");
     } else {
         dash();
+        writeToLog("led.csv", String(millis()) + ",RUNNING_SIGNAL");
     }
 }

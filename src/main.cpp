@@ -36,7 +36,7 @@
 #define MOTOR_B_IN1   2     // Motor B direction pin 1
 #define MOTOR_B_IN2   4     // Motor B direction pin 2
 
-#define LED_PIN nullptr //setlater
+#define LED_PIN 32 //setlater
 
 //operation related constants
 static const float CLOSEIN_START_THRESHOLD = 5.0; // in meters
@@ -85,6 +85,9 @@ Pose targetCoordinates = {
 void setup() {
   state = "setup";
   state_description = "System is setting up";
+  Serial.begin(115200);
+  delay(1000); // Allow time for serial monitor to start
+  setupLed(LED_PIN);
 
   //SDcard setup : if failed with errors
   if (!setupSdLogger(SD_CD_PIN)) {
