@@ -11,6 +11,7 @@
 #include "pose_est.h"
 #include "motor.h"
 #include "calculations.h"
+#include "led.h"
 
 //pins: all in gpio pin numbers
 #define BNO055_SDA_PIN 7 // D0
@@ -19,8 +20,8 @@
 #define GPS_RX_PIN 10 // D3
 #define GPS_TX_PIN 9 // D2
 
-#define ULTRASONIC_TRIGGER_PIN   1
-#define ULTRASONIC_ECHO_PIN      3
+#define ULTRASONIC_TRIGGER_PIN   16
+#define ULTRASONIC_ECHO_PIN      17
 
 #define SD_CD_PIN      13
 #define SD_CMD_PIN     23
@@ -92,6 +93,7 @@ void setup() {
     while (true) {
       // Stay here forever if SD card fails to initialize
       delay(1000);
+      ledMessage("error");
     }
   } else {
     // setup logging
@@ -199,7 +201,7 @@ void setup() {
 }
 
 void loop() {
-
+  ledMessage("running");
   // Periodic logging
   static unsigned long lastLogTime = 0;
   if (millis() - lastLogTime >= 5000) {
