@@ -5,4 +5,6 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+void task1Loop(void *pvParameters);
+
 #endif // TASK1_H

@@ -26,16 +26,26 @@ const uint8_t MOTOR_B_IN2   = 4;     // Motor B direction pin 2
 const uint8_t LED_PIN = 32;
 
 //operation related constants
+//thresholds in meters
 extern const float CLOSEIN_START_THRESHOLD = 5.0; // in meters
 extern const float TARGET_REACHED_THRESHOLD = 2.0; // in meters
+//log related
+extern const float LOG_QUEUE_SIZE = 50;
+extern const float MAX_LOG_LENGTH = 256;
+//task heap size
+extern const float TASK0_HEAP_SIZE = 1; // in blocks of 4096 bytes
+extern const float TASK1_HEAP_SIZE = 2; // in blocks of 4096 bytes
+extern const float TASK2_HEAP_SIZE = 8; // in blocks of 4096 bytes
 
+//DONT CHANGE
 //important variables
 extern String state = "";
 extern String state_description = "";
-extern const float LOG_QUEUE_SIZE = 50;
-extern const float MAX_LOG_LENGTH = 256;
 
 //task handles
 extern TaskHandle_t task0Handle = nullptr;
 extern TaskHandle_t task1Handle = nullptr;
 extern TaskHandle_t task2Handle = nullptr;
+
+//task heap sizes
+extern const float TASK_HEAP_BLOCK_SIZE = 4096; // in bytes

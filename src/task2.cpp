@@ -17,3 +17,12 @@ bool initializeLogQueue() {
     return true;
   }
 }
+
+void task2Loop(void *pvParameters) {
+    //setup
+
+    //loop
+    while (true) {
+        delay(1000);
+    }
+}

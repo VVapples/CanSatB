@@ -33,6 +33,10 @@ extern const float CLOSEIN_START_THRESHOLD;
 extern const float TARGET_REACHED_THRESHOLD;
 extern const float LOG_QUEUE_SIZE;
 extern const float MAX_LOG_LENGTH;
+extern const float TASK0_HEAP_SIZE;
+extern const float TASK1_HEAP_SIZE;
+extern const float TASK2_HEAP_SIZE;
+extern const float TASK_HEAP_BLOCK_SIZE;
 
 //important variables
 extern String state;

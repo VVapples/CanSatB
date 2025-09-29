@@ -10,6 +10,7 @@
 #include "calculations.h"
 #include "task0.h"
 #include "task1.h"
+#include "task2.h"
 #include "CONSTANTS.h"
 
 // Initialize BNO055 data structure with default values
@@ -50,34 +51,34 @@ Pose targetCoordinates = {
 
 void setup() {
 
-  
+  initializeLogQueue();
 
   xTaskCreatePinnedToCore(
     task0Loop,           // Task function
-    "LogWriter",         // Task name
-    4096,                // Stack size (bytes)
+    "Main",         // Task name
+    TASK0_HEAP_SIZE * TASK_HEAP_BLOCK_SIZE,                // Stack size (bytes)
     NULL,                // Parameters
-    1,                   // Priority (0-25, higher = more priority)
+    0,                   // Priority (0-25, higher = more priority)
     &task0Handle,        // Task handle
-    0                    // Core number (0)
+    1                   // Core number (0)
   );
 
   xTaskCreatePinnedToCore(
-    task0Loop,           // Task function
-    "LogWriter",         // Task name
-    4096,                // Stack size (bytes)
+    task1Loop,           // Task function
+    "SensorUpdater",         // Task name
+    TASK1_HEAP_SIZE * TASK_HEAP_BLOCK_SIZE,                // Stack size (bytes)
     NULL,                // Parameters
     1,                   // Priority (0-25, higher = more priority)
     &task1Handle,        // Task handle
-    0                    // Core number (0)
+    1                    // Core number (0)
   );
 
     xTaskCreatePinnedToCore(
-    task0Loop,           // Task function
+    task2Loop,           // Task function
     "LogWriter",         // Task name
-    4096,                // Stack size (bytes)
+    TASK2_HEAP_SIZE * TASK_HEAP_BLOCK_SIZE,                // Stack size (bytes)
     NULL,                // Parameters
-    1,                   // Priority (0-25, higher = more priority)
+    0,                   // Priority (0-25, higher = more priority)
     &task2Handle,        // Task handle
     0                    // Core number (0)
   );
