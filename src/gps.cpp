@@ -4,158 +4,103 @@
 #include <TinyGPS++.h>
 #include "sd_logger.h"
 
-static HardwareSerial gpsSerial(1); // Use Serial1
-static TinyGPSPlus gps;
 
-// The structure that holds our latest GPS data
-static GpsData currentGpsData;
 
-// GPS module's default baud rate (Ultimate GPS v3 default)
-static const uint32_t GPS_BAUD_RATE = 9600;
+HardwareSerial* gpsSerial = nullptr;
+TinyGPSPlus gps;
 
-// Module detection variables
-static uint32_t lastDataReceived = 0;
+static int GpsBoundRate = 9600;
+
+static int lastDataReceived = 0;
 static bool moduleDetected = false;
-static uint32_t detectionTimeout = 10000; // 10 seconds timeout
+static bool newData = false;
 
-// Implementation of the setupGps function
 bool setupGps(int txPin, int rxPin) {
-  gpsSerial.begin(GPS_BAUD_RATE, SERIAL_8N1, rxPin, txPin);
-  delay(1000); // Allow time for the GPS module to initialize
-  lastDataReceived = millis();
-  moduleDetected = false;
-  writeLogHeaders("gps_data.csv", "timestamp,latitude,longitude,altitude,hasFix,moduleDetected,satelliteCount,hdop,fixQuality,fixType,speed,course,timeValid,date,time,lastUpdate");
-  return true;
+    if (txPin == 9 && rxPin == 10) {
+        gpsSerial = new HardwareSerial(1); // Use Serial1
+        gpsSerial->begin(GpsBoundRate, SERIAL_8N1, rxPin, txPin);
+    } else if (txPin == 16 && rxPin == 17) {
+        gpsSerial = new HardwareSerial(2); // Use Serial2
+        gpsSerial->begin(GpsBoundRate, SERIAL_8N1, rxPin, txPin);
+    } else if (txPin == 1 && rxPin == 3) {
+      // CANNOT USE SERIAL BUS TO SEE LOGS
+        gpsSerial = new HardwareSerial(0); // Use Serial0
+        gpsSerial->begin(GpsBoundRate, SERIAL_8N1, rxPin, txPin);
+    } else {
+      return false; // Invalid pin combination
+    }
+    writeLogHeaders("gps_data.csv", "Timestamp,HasFix,Latitude,Longitude,Altitude,Satellites,FixQuality,FixType,HDOP,Speed,Course,Date,Time,TimeValid");
+    return true;
 }
 
-// MTK3339-specific configuration commands for Ultimate GPS v3
-void configureGps(int updateRate, uint32_t baudRate) {
-}
-
-// Enhanced implementation of the updateGps function for Ultimate GPS v3
 bool updateGps() {
-  bool newData = false;
-  
-  // Read all available characters from the GPS serial port
-  while (gpsSerial.available() > 0) {
-    static int charCount = 0;
-    char c = gpsSerial.read();
-    charCount++;
-    
-    if (gps.encode(c)) {
-      lastDataReceived = millis();
-      moduleDetected = true;
-      newData = true;
+  int loopCount = 0;
+    while (gpsSerial->available() > 0 && loopCount < 500) {
+        char c = gpsSerial->read();
+        if (gps.encode(c)) {
+          lastDataReceived = millis();
+          moduleDetected = true;
+          newData = true;
+        }
+        yield(); // Let watchdog timer reset
+        loopCount++;
     }
-    
-    // Prevent watchdog by limiting characters per loop
-    if (charCount > 100) {
-        charCount = 0;
-        break; // Exit loop and let other tasks run
-    }
-  }
-
-  // Check for module timeout
-  if (millis() - lastDataReceived > detectionTimeout) {
-    moduleDetected = false;
-  }
-  
-  currentGpsData.moduleDetected = moduleDetected;
-
-  // TinyGPS++ updates its internal state with every character.
-  // Check if location data has been updated
-  if (gps.location.isUpdated() || gps.date.isUpdated() || gps.time.isUpdated()) {
-    currentGpsData.lastUpdate = millis();
-    
-    // Location data
-    if (gps.location.isValid()) {
-      currentGpsData.hasFix = true;
-      currentGpsData.latitude = gps.location.lat();
-      currentGpsData.longitude = gps.location.lng();
-    } else {
-      currentGpsData.hasFix = false;
-    }
-    
-    // Altitude data
-    if (gps.altitude.isValid()) {
-      currentGpsData.altitude = gps.altitude.meters();
-    }
-    
-    // Satellite and quality data
-    if (gps.satellites.isValid()) {
-      currentGpsData.satelliteCount = gps.satellites.value();
-    }
-    
-    // Dilution of Precision data
-    if (gps.hdop.isValid()) {
-      currentGpsData.hdop = gps.hdop.hdop();
-    }
-    
-    // Speed and course data (Ultimate GPS v3 provides this)
-    if (gps.speed.isValid()) {
-      currentGpsData.speed = gps.speed.kmph(); // Speed in km/h
-    }
-    
-    if (gps.course.isValid()) {
-      currentGpsData.course = gps.course.deg(); // Course in degrees
-    }
-    
-    // Time and date data
-    if (gps.date.isValid() && gps.time.isValid()) {
-      currentGpsData.timeValid = true;
-      currentGpsData.date = gps.date.value(); // Format: ddmmyy
-      currentGpsData.time = gps.time.value(); // Format: hhmmsscc
-    } else {
-      currentGpsData.timeValid = false;
-    }
-    
-    // Fix quality information (extracted from internal TinyGPS++ data)
-    // Note: TinyGPS++ doesn't directly expose fix quality, but we can infer it
-    if (gps.location.isValid()) {
-      currentGpsData.fixQuality = 1; // GPS fix (assume standard GPS)
-      currentGpsData.fixType = 3;    // 3D fix (assume 3D if we have location + altitude)
-    } else {
-      currentGpsData.fixQuality = 0; // Invalid
-      currentGpsData.fixType = 1;    // No fix
-    }
-    
-    //logging
-    String gpswriteBuffer = String(millis()) + "," +
-                   String(currentGpsData.latitude, 6) + "," +
-                   String(currentGpsData.longitude, 6) + "," +
-                   String(currentGpsData.altitude, 2) + "," +
-                   String(currentGpsData.hasFix ? 1 : 0) + "," +
-                   String(currentGpsData.moduleDetected ? 1 : 0) + "," +
-                   String(currentGpsData.satelliteCount) + "," +
-                   String(currentGpsData.hdop, 2) + "," +
-                   String(currentGpsData.fixQuality) + "," +
-                   String(currentGpsData.fixType) + "," +
-                   String(currentGpsData.speed, 2) + "," +
-                   String(currentGpsData.course, 2) + "," +
-                   String(currentGpsData.timeValid ? 1 : 0) + "," +
-                   String(currentGpsData.date) + "," +
-                   String(currentGpsData.time) + "," +
-                   String(currentGpsData.lastUpdate);
-  writeToLog("gps_data.csv", gpswriteBuffer);
-
-    return true; // New data was processed
-  }
-
-  return false; // No new location data
+    return newData;
 }
 
-// Implementation of the getGpsData function
 GpsData getGpsData() {
-  // Simply return the latest data we have stored.
-  return currentGpsData;
-}
+  GpsData data;
 
-// Implementation of the isGpsModuleDetected function
-bool isGpsModuleDetected() {
-  return moduleDetected && (millis() - lastDataReceived < detectionTimeout);
-}
+  data.moduleDetected = moduleDetected;
+  data.lastUpdate = lastDataReceived;
 
-// Optimized GPS initialization for independent power GPS modules
-bool initializeGpsWithIndependentPower(int txPin, int rxPin, int updateRate, uint32_t baudRate) {
-  return true;
+  if (newData) {
+    newData = false;
+
+    data.hasFix = gps.location.isValid();
+    data.latitude = gps.location.lat();
+    data.longitude = gps.location.lng();
+    data.altitude = gps.altitude.meters();
+    data.satelliteCount = gps.satellites.value();
+    data.fixQuality = static_cast<int>(gps.location.FixQuality());
+    data.fixType = (data.fixQuality >= 1) ? ((data.hasFix && gps.altitude.isValid()) ? 3 : 2) : 1; // Simplified fix type
+    data.hdop = gps.hdop.hdop();
+    data.speed = gps.speed.kmph();
+    data.course = gps.course.deg();
+    data.date = gps.date.value();
+    data.time = gps.time.value();
+    data.timeValid = gps.date.isValid() && gps.time.isValid();
+  } else {
+    // If no new data, return invalid/default values
+    data.hasFix = false;
+    data.latitude = 0.0;
+    data.longitude = 0.0;
+    data.altitude = 0.0;
+    data.satelliteCount = 0;
+    data.fixQuality = 0;
+    data.fixType = 1; // No fix
+    data.hdop = 0.0;
+    data.speed = 0.0;
+    data.course = 0.0;
+    data.date = 0;
+    data.time = 0;
+    data.timeValid = false;
+  }
+
+  writeToLog("gps_data.csv", String(millis()) + "," +
+               String(data.hasFix) + "," +
+               String(data.latitude, 6) + "," +
+               String(data.longitude, 6) + "," +
+               String(data.altitude, 2) + "," +
+               String(data.satelliteCount) + "," +
+               String(data.fixQuality) + "," +
+               String(data.fixType) + "," +
+               String(data.hdop, 2) + "," +
+               String(data.speed, 2) + "," +
+               String(data.course, 2) + "," +
+               String(data.date) + "," +
+               String(data.time) + "," +
+               String(data.timeValid ? 1 : 0));
+               
+  return data;
 }

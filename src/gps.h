@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 // This structure holds all the relevant GPS data.
-// It's a clean way to pass GPS info around your program.
+// Enhanced for Ultimate GPS Breakout v3 (MTK3339) capabilities
 struct GpsData {
   // Core Location Data
   float latitude;      // Latitude in degrees
@@ -34,54 +34,10 @@ struct GpsData {
   uint32_t lastUpdate; // Timestamp of last data update (millis())
 };
 
-/**
- * @brief Initializes the serial communication with the GPS module.
- * This function sets up the hardware serial connection and initializes the GPS data structure.
- * @param txPin The microcontroller pin that sends data TO the GPS RX pin.
- * @param rxPin The microcontroller pin that receives data FROM the GPS TX pin.
- */
 bool setupGps(int txPin, int rxPin);
 
-/**
- * @brief Configures the GPS module with specific settings (MTK3339/Ultimate GPS v3).
- * This function sends configuration commands to set update rate, baud rate, and NMEA sentences.
- * @param updateRate GPS update rate in Hz (1-10 Hz supported).
- * @param baudRate Serial communication baud rate (default 9600).
- */
-void configureGps(int updateRate, uint32_t baudRate);
-
-/**
- * @brief Reads data from the GPS module and parses it.
- * @note This function should be called in every iteration of the main loop().
- * @return Returns true if new, updated location data was received, false otherwise.
- */
 bool updateGps();
 
-/**
- * @brief Gets the most recently parsed GPS data.
- * @return A GpsData struct containing the latest information.
- */
 GpsData getGpsData();
-
-/**
- * @brief Checks if the GPS module is detected and responding.
- * @return Returns true if GPS module is detected and has sent data recently, false otherwise.
- */
-bool isGpsModuleDetected();
-
-/**
- * @brief Optimized GPS initialization for independent power GPS modules.
- * This function handles the complete GPS setup process including:
- * - Hardware serial setup
- * - Detection of already active GPS
- * - Conditional configuration (only if needed)
- * - Status reporting and logging
- * @param txPin The microcontroller pin that sends data TO the GPS RX pin.
- * @param rxPin The microcontroller pin that receives data FROM the GPS TX pin.
- * @param updateRate GPS update rate in Hz (1-10 Hz supported).
- * @param baudRate Serial communication baud rate (default 9600).
- * @return Returns true if GPS initialization was successful, false otherwise.
- */
-bool initializeGpsWithIndependentPower(int txPin, int rxPin, int updateRate = 1, uint32_t baudRate = 9600);
 
 #endif // GPS_H

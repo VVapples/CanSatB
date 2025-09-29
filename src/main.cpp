@@ -1,7 +1,6 @@
 //FOR TESTING PURPOSES 
 //full logging and some motor control logic added
 
-
 #include <Arduino.h>
 #include "SD.h"
 #include "FS.h"
