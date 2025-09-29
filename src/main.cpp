@@ -22,7 +22,7 @@
 #define ULTRASONIC_TRIGGER_PIN   1
 #define ULTRASONIC_ECHO_PIN      3
 
-#define SD_CD_PIN      5
+#define SD_CD_PIN      13
 #define SD_CMD_PIN     23
 #define SD_CLK_PIN     18
 #define SD_DATA0_PIN   19
@@ -113,17 +113,17 @@ void setup() {
   //   writeToLog("system.csv", String(millis()) + ",BNO055,INIT_SUCCESS,0,BNO055 initialized successfully");
   // }
 
-  // GPS
-  if (!setupGps(GPS_TX_PIN, GPS_RX_PIN)) {
-    state = "error";
-    state_description = "GPS initialization failed!";
-    while (true) {
-      // Stay here forever if GPS fails to initialize
-      delay(1000);
-    }
-  } else {
-    writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
-  }
+  // // GPS
+  // if (!setupGps(GPS_TX_PIN, GPS_RX_PIN)) {
+  //   state = "error";
+  //   state_description = "GPS initialization failed!";
+  //   while (true) {
+  //     // Stay here forever if GPS fails to initialize
+  //     delay(1000);
+  //   }
+  // } else {
+  //   writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
+  // }
 
   // // Ultrasonic
   // if (!setupUltrasonic(ULTRASONIC_TRIGGER_PIN, ULTRASONIC_ECHO_PIN)) {
@@ -183,8 +183,10 @@ void setup() {
   //     writeToLog("system.csv", String(millis()) + ",TARGET,COORDINATES_INVALID,-1,Invalid target coordinates (0,0) - check targetCoordiante.csv format");
   //   }
   // } else {
-  //   writeToLog("system.csv", String(millis()) + ",TARGET,FILE_NOT_FOUND,-1,targetCoordiante.csv file not found on SD card");
+  //   writeToLog("system.csv", String(millis()) + ",TARGET,FILE_NOT_FOUND,-1,targetCoordiante.csv file not found on SD card / Creating default file");
   //   // Set default coordinates if file not found
+  //   writeLogHeaders("targetCoordinate.csv", "lat,lon");
+  //   writeToLog("targetCoordinate.csv", "0.0,0.0");
   //   targetCoordinates.latitude = 0.0;
   //   targetCoordinates.longitude = 0.0;
   //   targetCoordinates.heading = 0.0;
@@ -201,7 +203,7 @@ void loop() {
   // Periodic logging
   static unsigned long lastLogTime = 0;
   if (millis() - lastLogTime >= 5000) {
-    writeToLog("system.csv", String(millis()) + ",SYSTEM,LOOP_RUNNING,0,System main loop running - State: " + state + ", Description: " + state_description);
+    writeToLog("system.csv", String(millis()) + ",SYSTEM,LOOP_RUNNING,0,System main loop running - State: " + state + " | Description: " + state_description);
     lastLogTime = millis();
   }
 
@@ -217,16 +219,16 @@ void loop() {
   //   }
   // }
 
-  // Update GPS data
-  static unsigned long lastGpsUpdate = 0;
-  if (millis() - lastGpsUpdate >= 1000) { // Update GPS every second
-    static bool updated = false;
-    updated = updateGps();
-    lastGpsUpdate = millis();
-    if (updated) {
-      GpsData gpsData = getGpsData();
-    }
-  }
+  // // Update GPS data
+  // static unsigned long lastGpsUpdate = 0;
+  // if (millis() - lastGpsUpdate >= 1000) { // Update GPS every second
+  //   static bool updated = false;
+  //   updated = updateGps();
+  //   lastGpsUpdate = millis();
+  //   if (updated) {
+  //     GpsData gpsData = getGpsData();
+  //   }
+  // }
 
   // // get ultrasonic distance
   // if (state == "CloseIn") {
