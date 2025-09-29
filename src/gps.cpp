@@ -4,17 +4,13 @@
 #include <TinyGPS++.h>
 #include "sd_logger.h"
 
-// The serial connection to the GPS module
-// We use static to keep these variables private to this file.
-static HardwareSerial gpsSerial(1); // Will be initialized in setupGps
-
-// The TinyGPS++ object that parses GPS data
+static HardwareSerial gpsSerial(1); // Use Serial1
 static TinyGPSPlus gps;
 
 // The structure that holds our latest GPS data
 static GpsData currentGpsData;
 
-// GPS module's default baud rate
+// GPS module's default baud rate (Ultimate GPS v3 default)
 static const uint32_t GPS_BAUD_RATE = 9600;
 
 // Module detection variables
@@ -42,11 +38,20 @@ bool updateGps() {
   
   // Read all available characters from the GPS serial port
   while (gpsSerial.available() > 0) {
+    static int charCount = 0;
     char c = gpsSerial.read();
+    charCount++;
+    
     if (gps.encode(c)) {
       lastDataReceived = millis();
       moduleDetected = true;
       newData = true;
+    }
+    
+    // Prevent watchdog by limiting characters per loop
+    if (charCount > 100) {
+        charCount = 0;
+        break; // Exit loop and let other tasks run
     }
   }
 
@@ -57,56 +62,84 @@ bool updateGps() {
   
   currentGpsData.moduleDetected = moduleDetected;
 
-  // Always update GPS data regardless of validity
-  currentGpsData.lastUpdate = millis();
-  
-  // Location data - always assign
-  currentGpsData.hasFix = gps.location.isValid();
-  currentGpsData.latitude = gps.location.lat();
-  currentGpsData.longitude = gps.location.lng();
-  
-  // Altitude data - always assign
-  currentGpsData.altitude = gps.altitude.meters();
-  
-  // Satellite and quality data - always assign
-  currentGpsData.satelliteCount = gps.satellites.value();
-  
-  // Dilution of Precision data - always assign
-  currentGpsData.hdop = gps.hdop.hdop();
-  
-  // Speed and course data - always assign
-  currentGpsData.speed = gps.speed.kmph(); // Speed in km/h
-  currentGpsData.course = gps.course.deg(); // Course in degrees
-  
-  // Time and date data - always assign
-  currentGpsData.timeValid = gps.date.isValid() && gps.time.isValid();
-  currentGpsData.date = gps.date.value(); // Format: ddmmyy
-  currentGpsData.time = gps.time.value(); // Format: hhmmsscc
-  
-  // Fix quality information - always assign
-  currentGpsData.fixQuality = gps.location.isValid() ? 1 : 0;
-  currentGpsData.fixType = gps.location.isValid() ? 3 : 1;
-  
-  //logging
-  String gpswriteBuffer = String(millis()) + "," +
-                 String(currentGpsData.latitude, 6) + "," +
-                 String(currentGpsData.longitude, 6) + "," +
-                 String(currentGpsData.altitude, 2) + "," +
-                 String(currentGpsData.hasFix ? 1 : 0) + "," +
-                 String(currentGpsData.moduleDetected ? 1 : 0) + "," +
-                 String(currentGpsData.satelliteCount) + "," +
-                 String(currentGpsData.hdop, 2) + "," +
-                 String(currentGpsData.fixQuality) + "," +
-                 String(currentGpsData.fixType) + "," +
-                 String(currentGpsData.speed, 2) + "," +
-                 String(currentGpsData.course, 2) + "," +
-                 String(currentGpsData.timeValid ? 1 : 0) + "," +
-                 String(currentGpsData.date) + "," +
-                 String(currentGpsData.time) + "," +
-                 String(currentGpsData.lastUpdate);
-writeToLog("gps_data.csv", gpswriteBuffer);
+  // TinyGPS++ updates its internal state with every character.
+  // Check if location data has been updated
+  if (gps.location.isUpdated() || gps.date.isUpdated() || gps.time.isUpdated()) {
+    currentGpsData.lastUpdate = millis();
+    
+    // Location data
+    if (gps.location.isValid()) {
+      currentGpsData.hasFix = true;
+      currentGpsData.latitude = gps.location.lat();
+      currentGpsData.longitude = gps.location.lng();
+    } else {
+      currentGpsData.hasFix = false;
+    }
+    
+    // Altitude data
+    if (gps.altitude.isValid()) {
+      currentGpsData.altitude = gps.altitude.meters();
+    }
+    
+    // Satellite and quality data
+    if (gps.satellites.isValid()) {
+      currentGpsData.satelliteCount = gps.satellites.value();
+    }
+    
+    // Dilution of Precision data
+    if (gps.hdop.isValid()) {
+      currentGpsData.hdop = gps.hdop.hdop();
+    }
+    
+    // Speed and course data (Ultimate GPS v3 provides this)
+    if (gps.speed.isValid()) {
+      currentGpsData.speed = gps.speed.kmph(); // Speed in km/h
+    }
+    
+    if (gps.course.isValid()) {
+      currentGpsData.course = gps.course.deg(); // Course in degrees
+    }
+    
+    // Time and date data
+    if (gps.date.isValid() && gps.time.isValid()) {
+      currentGpsData.timeValid = true;
+      currentGpsData.date = gps.date.value(); // Format: ddmmyy
+      currentGpsData.time = gps.time.value(); // Format: hhmmsscc
+    } else {
+      currentGpsData.timeValid = false;
+    }
+    
+    // Fix quality information (extracted from internal TinyGPS++ data)
+    // Note: TinyGPS++ doesn't directly expose fix quality, but we can infer it
+    if (gps.location.isValid()) {
+      currentGpsData.fixQuality = 1; // GPS fix (assume standard GPS)
+      currentGpsData.fixType = 3;    // 3D fix (assume 3D if we have location + altitude)
+    } else {
+      currentGpsData.fixQuality = 0; // Invalid
+      currentGpsData.fixType = 1;    // No fix
+    }
+    
+    //logging
+    String gpswriteBuffer = String(millis()) + "," +
+                   String(currentGpsData.latitude, 6) + "," +
+                   String(currentGpsData.longitude, 6) + "," +
+                   String(currentGpsData.altitude, 2) + "," +
+                   String(currentGpsData.hasFix ? 1 : 0) + "," +
+                   String(currentGpsData.moduleDetected ? 1 : 0) + "," +
+                   String(currentGpsData.satelliteCount) + "," +
+                   String(currentGpsData.hdop, 2) + "," +
+                   String(currentGpsData.fixQuality) + "," +
+                   String(currentGpsData.fixType) + "," +
+                   String(currentGpsData.speed, 2) + "," +
+                   String(currentGpsData.course, 2) + "," +
+                   String(currentGpsData.timeValid ? 1 : 0) + "," +
+                   String(currentGpsData.date) + "," +
+                   String(currentGpsData.time) + "," +
+                   String(currentGpsData.lastUpdate);
+  writeToLog("gps_data.csv", gpswriteBuffer);
 
-  return true; // Always return true since we always update data
+    return true; // New data was processed
+  }
 
   return false; // No new location data
 }

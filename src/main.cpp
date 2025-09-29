@@ -102,7 +102,7 @@ void setup() {
 
   // Other sensor setups
 
-  // // BNO055
+  // BNO055
   // if (!setupBno055()) {
   //   state = "error";
   //   state_description = "BNO055 initialization failed!";
@@ -207,7 +207,7 @@ void loop() {
   }
 
   // Update Sensor data
-  // // Update BNO055 data
+  // Update BNO055 data
   // static unsigned long lastBnoUpdate = 0;
   // if (millis() - lastBnoUpdate >= 100) { // Update BNO055 every 100 ms
   //   static bool bnoUpdated = false;
