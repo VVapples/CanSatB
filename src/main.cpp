@@ -301,8 +301,24 @@ void loop() {
         static int searchTimes = 0;
         static bool found = false;
         while (searchTimes < 10 && !found) {
-
-
+          distance = getDistanceCm();
+          lastUltrasonicUpdate = millis();
+          if (ULTRASONIC_ERROR_THRESHOLD < distance) {
+            writeToLog("system.csv", String(millis()) + ",STATE,ARRIVED,0,Arrived at target location - distance to target: " + String(distance, 2) + " cm");
+            found = true;
+            break;
+          }
+          if (searchTimes % 2 == 0) {
+            motorControl("right", searchTimes * 100); // Turn right
+          } else {
+            motorControl("left", searchTimes * 100); // Turn left
+          }
+        }
+        if (found) {
+          motorControl("forward", 100); // Move forward slowly if not found
+        } else {
+          motorControl("stop"); // Stop if not found after search
+          state = "arrived"; // Go back to arrived state
         }
   } else if (state == "arrived") {
     motorControl("stop"); // Stop all motors
