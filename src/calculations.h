@@ -29,4 +29,27 @@ double calculateDistance(double lat1, double lon1, double lat2, double lon2);
  */
 double calculateBearing(double lat1, double lon1, double lat2, double lon2);
 
+/**
+ * Calculate magnetic heading using magnetometer X and Y components
+ * 
+ * @param magX Magnetometer X component (microteslas)
+ * @param magY Magnetometer Y component (microteslas)
+ * @return Heading in degrees (-180 to +180), where 0° = North, 90° = East, -90° = West, ±180° = South
+ */
+double calculateMagneticHeading(double magX, double magY);
+
+/**
+ * Set the heading offset to correct for BNO055 vs robot orientation difference
+ * 
+ * @param offset_degrees Offset in degrees (positive = clockwise rotation)
+ */
+void setHeadingOffset(double offset_degrees);
+
+/**
+ * Get the current heading offset value
+ * 
+ * @return Current heading offset in degrees
+ */
+double getHeadingOffset();
+
 #endif // CALCULATIONS_H

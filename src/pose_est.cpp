@@ -1,6 +1,8 @@
 #include "pose_est.h"
 #include <Arduino.h>
 #include "sd_logger.h"
+#include "calculations.h"
+#include "calculations.h"
 
 // Implementation of getCurrentPose function
 Pose getCurrentPose(const GpsData& gpsData, const Bno055Data& bno055Data) {
@@ -25,22 +27,17 @@ Pose getCurrentPose(const GpsData& gpsData, const Bno055Data& bno055Data) {
     gpsValid = false;
   }
   
-  // BNO055 Heading Processing - Handle default quaternion and heading values
-  if (bno055Data.quatW != 1.0 || bno055Data.quatX != 0.0 || 
-      bno055Data.quatY != 0.0 || bno055Data.quatZ != 0.0) {
+  // BNO055 Magnetometer Heading Processing - Use raw magnetometer data
+  if ((bno055Data.magX != 0.0 || bno055Data.magY != 0.0) &&
+      (bno055Data.quatW != 1.0 || bno055Data.quatX != 0.0 || 
+       bno055Data.quatY != 0.0 || bno055Data.quatZ != 0.0)) {
     
-    // BNO055 has moved from default identity quaternion - use heading
-    currentPose.heading = bno055Data.heading;
-    
-    // Normalize heading to 0-360 range efficiently
-    currentPose.heading = fmod(currentPose.heading, 360.0);
-    if (currentPose.heading < 0.0) {
-      currentPose.heading += 360.0;
-    }
+    // BNO055 has valid magnetometer data - calculate heading from raw mag data
+    currentPose.heading = calculateMagneticHeading(bno055Data.magX, bno055Data.magY);
     bnoValid = true;
     
   } else {
-    // BNO055 still at default values - assume 0° heading (North)
+    // BNO055 still at default values or no mag data - assume 0° heading (North)
     currentPose.heading = 0.0;
     bnoValid = false;
   }

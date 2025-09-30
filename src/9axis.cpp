@@ -110,7 +110,7 @@ bool updateBno055Data() {
   // Check if we have new/valid data by comparing with previous data
   // BNO055 should always provide some data, but we check for sensor readiness
   bool hasNewData = true; // Assume new data unless sensor fails
-  
+
   // Basic sanity check - if all readings are exactly 0, sensor might not be responding
   if (currentBno055Data.accelX == 0.0 && currentBno055Data.accelY == 0.0 && currentBno055Data.accelZ == 0.0 &&
       currentBno055Data.gyroX == 0.0 && currentBno055Data.gyroY == 0.0 && currentBno055Data.gyroZ == 0.0 &&

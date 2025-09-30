@@ -86,6 +86,9 @@ Pose targetCoordinates = {
 // initialize distance variable
 float distance = -1.0; // in cm, -1 indicates uninitialized or error
 
+double distanceToTarget = -1.0; // in meters, -1 indicates uninitialized or error
+double BearingToTarget = -1.0;  // in degrees, -1 indicates uninitialized or error
+
 void setup() {
   state = "setup";
   state_description = "System is setting up";
@@ -208,6 +211,9 @@ void setup() {
     targetCoordinates.heading = 0.0;
   }
   
+  //posediff(for testing)
+  writeLogHeaders("posediff.csv", "timestamp,distance_to_target_m,bearing_to_target_deg");
+
   // Log system startup completion
   state_description = "All systems initialized successfully";
   writeToLog("system.csv", String(millis()) + ",SYSTEM,STARTUP_COMPLETE,0,All sensors initialized and system ready");
@@ -215,6 +221,9 @@ void setup() {
 }
 
 void loop() {
+
+  writeToLog("posediff.csv", String(millis()) + "," + String(distanceToTarget, 6) + "," + String(BearingToTarget, 6));
+
   ledMessage("running");
   // Periodic logging
   static unsigned long lastLogTime = 0;
@@ -257,10 +266,11 @@ void loop() {
   static unsigned long lastPoseLog = 0;
   if (lastGpsUpdate > lastPoseLog || lastBnoUpdate > lastPoseLog) {
     // Get current sensor data and calculate pose
-    GpsData currentGpsData = getGpsData();
-    Bno055Data currentBnoData = getBno055Data();
-    
-    Pose currentPose = getCurrentPose(currentGpsData, currentBnoData);
+    gpsData = getGpsData();
+    bnoData = getBno055Data();
+
+    // Use the centralized getCurrentPose function
+    currentPose = getCurrentPose(gpsData, bnoData);
     lastPoseLog = millis();
   }
 
@@ -268,7 +278,7 @@ void loop() {
   static unsigned long lastStateChangeTime = 0;
   if (millis() - lastStateChangeTime > 10000) {  // Evaluate state every 10 seconds
     lastStateChangeTime = millis();
-    static double distanceToTarget = calculateDistance(currentPose.latitude, currentPose.longitude, targetCoordinates.latitude, targetCoordinates.longitude);
+    distanceToTarget = calculateDistance(currentPose.latitude, currentPose.longitude, targetCoordinates.latitude, targetCoordinates.longitude);
     if (state == "setup") {
       state = "approach";
       state_description = "Searching for target - distance to target: " + String(distanceToTarget, 2) + " meters";
@@ -276,22 +286,32 @@ void loop() {
     } else if (state == "approach" && distanceToTarget <= CLOSEIN_START_THRESHOLD) {
       state = "closeIn";
       state_description = "Approaching target - distance to target: " + String(distanceToTarget, 2) + " meters";
+      writeToLog("system.csv", String(millis()) + ",STATE,CLOSEIN,0,Transitioning to CLOSEIN state - distance to target: " + String(distanceToTarget, 2) + " meters");
     } else if (state == "closeIn" && ULTRASONIC_ERROR_THRESHOLD < distance && distance <= TARGET_REACHED_THRESHOLD) {
       state = "arrived";
       state_description = "Arrived at target location - distance to target: " + String(distanceToTarget, 2) + " meters";
+      writeToLog("system.csv", String(millis()) + ",STATE,ARRIVED,0,Arrived at target location - distance to target: " + String(distanceToTarget, 2) + " meters");
     }
   } 
 
   // // Motor control and other operations would go here
 
-  static double currentBearing = calculateBearing(currentPose.latitude, currentPose.longitude, targetCoordinates.latitude, targetCoordinates.longitude);
+  static double TargetAngle = calculateBearing(currentPose.latitude, currentPose.longitude, targetCoordinates.latitude, targetCoordinates.longitude);
+  // calulate bearing to target
+  BearingToTarget = currentPose.heading - TargetAngle;
+  if (BearingToTarget > 180) {
+    BearingToTarget -= 360; // Normalize to [-180, 180]
+  } else if (BearingToTarget < -180) {
+    BearingToTarget += 360; // Normalize to [-180, 180]
+  }
+
   if (state == "approach") {
-    if (abs(currentBearing) > 30) {
-      if (currentBearing > 0) {
-        motorControl("right", 100); // Turn right
+    if (abs(BearingToTarget) > 30) {
+      if (BearingToTarget > 0) {
+        motorControl("right", 10); // Turn right
       } else {
         // Turn left
-        motorControl("left", 100); // Turn left
+        motorControl("left", 10); // Turn left
       }
     } else {
       // Move forward
@@ -309,9 +329,9 @@ void loop() {
             break;
           }
           if (searchTimes % 2 == 0) {
-            motorControl("right", searchTimes * 100); // Turn right
+            motorControl("right", searchTimes * 10); // Turn right
           } else {
-            motorControl("left", searchTimes * 100); // Turn left
+            motorControl("left", searchTimes * 10); // Turn left
           }
         }
         if (found) {

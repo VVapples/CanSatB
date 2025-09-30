@@ -71,20 +71,7 @@ GpsData getGpsData() {
     data.time = gps.time.value();
     data.timeValid = gps.date.isValid() && gps.time.isValid();
   } else {
-    // If no new data, return invalid/default values
-    data.hasFix = false;
-    data.latitude = 0.0;
-    data.longitude = 0.0;
-    data.altitude = 0.0;
-    data.satelliteCount = 0;
-    data.fixQuality = 0;
-    data.fixType = 1; // No fix
-    data.hdop = 0.0;
-    data.speed = 0.0;
-    data.course = 0.0;
-    data.date = 0;
-    data.time = 0;
-    data.timeValid = false;
+    // return last data (no update)
   }
 
   writeToLog("gps_data.csv", String(millis()) + "," +
