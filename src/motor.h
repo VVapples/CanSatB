@@ -20,10 +20,8 @@
  */
 
 // Function declarations
-void setupMotors(int stby, int pwmA, int ain1, int ain2, int pwmB, int bin1, int bin2);
+void setupMotors(int ain1, int ain2, int bin1, int bin2);
 void motorWrite(char motor, int speed);
 void stopAllMotors();
-void enterStandby();
-void exitStandby();
 
 #endif // MOTOR_H

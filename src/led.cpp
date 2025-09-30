@@ -36,6 +36,9 @@ void ledMessage(String message) {
     if (message == "error") {
         dot();
         writeToLog("led.csv", String(millis()) + ",ERROR_SIGNAL");
+    } else if (message == "startup") {
+        digitalWrite(LED_PIN, HIGH); // Solid ON
+        writeToLog("led.csv", String(millis()) + ",INIT_SIGNAL");
     } else {
         dash();
         writeToLog("led.csv", String(millis()) + ",RUNNING_SIGNAL");

@@ -17,22 +17,22 @@
 #define BNO055_SDA_PIN 7 // D0
 #define BNO055_SCL_PIN 8 // D1
 
-#define GPS_RX_PIN 10 // D3
-#define GPS_TX_PIN 9 // D2
+#define GPS_RX_PIN 17
+#define GPS_TX_PIN 16
 
-#define ULTRASONIC_TRIGGER_PIN   16
-#define ULTRASONIC_ECHO_PIN      17
+#define ULTRASONIC_TRIGGER_PIN   25
+#define ULTRASONIC_ECHO_PIN      26
 
 #define SD_CD_PIN      13
 #define SD_CMD_PIN     23
 #define SD_CLK_PIN     18
 #define SD_DATA0_PIN   19
 
-#define MOTOR_STBY    15    // Standby pin - LOW = standby, HIGH = active
-#define MOTOR_A_PWM   27    // Motor A PWM (speed control)
-#define MOTOR_A_IN1   12    // Motor A direction pin 1
+#define MOTOR_STBY    3X3    // Standby pin - LOW = standby, HIGH = active
+#define MOTOR_A_PWM   3X3    // Motor A PWM (speed control)
+#define MOTOR_A_IN1   27    // Motor A direction pin 1
 #define MOTOR_A_IN2   14    // Motor A direction pin 2
-#define MOTOR_B_PWM   33    // Motor B PWM (speed control)
+#define MOTOR_B_PWM   3X3    // Motor B PWM (speed control)
 #define MOTOR_B_IN1   2     // Motor B direction pin 1
 #define MOTOR_B_IN2   4     // Motor B direction pin 2
 
@@ -75,7 +75,7 @@ Pose currentPose = {
   0.0        // heading
 };
 
-// Initialize target coordinates structure
+// // Initialize target coordinates structure
 Pose targetCoordinates = {
   0.0,       // latitude
   0.0,       // longitude
@@ -85,9 +85,10 @@ Pose targetCoordinates = {
 void setup() {
   state = "setup";
   state_description = "System is setting up";
-  Serial.begin(115200);
   delay(1000); // Allow time for serial monitor to start
+  // Serial.begin(115200);
   setupLed(LED_PIN);
+  ledMessage("startup");
 
   //SDcard setup : if failed with errors
   if (!setupSdLogger(SD_CD_PIN)) {
@@ -107,95 +108,97 @@ void setup() {
   // Other sensor setups
 
   // BNO055
-  // if (!setupBno055()) {
-  //   state = "error";
-  //   state_description = "BNO055 initialization failed!";
-  //   while (true) {
-  //     // Stay here forever if BNO055 fails to initialize
-  //     delay(1000);
-  //   }
-  // } else {
-  //   writeToLog("system.csv", String(millis()) + ",BNO055,INIT_SUCCESS,0,BNO055 initialized successfully");
-  // }
+  if (!setupBno055()) {
+    state = "error";
+    state_description = "BNO055 initialization failed!";
+    writeToLog("system.csv", String(millis()) + ",BNO055,INIT_FAILED,-1,BNO055 initialization failed!");
+    while (true) {
+      // Stay here forever if BNO055 fails to initialize
+      ledMessage("error");
+    }
+  } else {
+    writeToLog("system.csv", String(millis()) + ",BNO055,INIT_SUCCESS,0,BNO055 initialized successfully");
+  }
 
-  // // GPS
-  // if (!setupGps(GPS_TX_PIN, GPS_RX_PIN)) {
-  //   state = "error";
-  //   state_description = "GPS initialization failed!";
-  //   while (true) {
-  //     // Stay here forever if GPS fails to initialize
-  //     delay(1000);
-  //   }
-  // } else {
-  //   writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
-  // }
+  // GPS
+  if (!setupGps(GPS_TX_PIN, GPS_RX_PIN)) {
+    state = "error";
+    state_description = "GPS initialization failed!";
+    writeToLog("system.csv", String(millis()) + ",GPS,INIT_FAILED,-1,GPS initialization failed!");
+    while (true) {
+      // Stay here forever if GPS fails to initialize
+      ledMessage("error");
+    }
+  } else {
+    writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
+  }
 
-  // // Ultrasonic
-  // if (!setupUltrasonic(ULTRASONIC_TRIGGER_PIN, ULTRASONIC_ECHO_PIN)) {
-  //   state = "error";
-  //   state_description = "Ultrasonic sensor initialization failed!";
-  //   writeToLog("system.csv", String(millis()) + ",ULTRASONIC,INIT_FAILED,-1,Ultrasonic sensor initialization failed!");
-  //   while (true) {
-  //     // Stay here forever if Ultrasonic sensor fails to initialize
-  //     delay(1000);
-  //   }
-  // } else {
-  //   writeToLog("system.csv", String(millis()) + ",ULTRASONIC,INIT_SUCCESS,0,Ultrasonic sensor initialized successfully");
-  // }
+  // Ultrasonic
+  if (!setupUltrasonic(ULTRASONIC_TRIGGER_PIN, ULTRASONIC_ECHO_PIN)) {
+    state = "error";
+    state_description = "Ultrasonic sensor initialization failed!";
+    writeToLog("system.csv", String(millis()) + ",ULTRASONIC,INIT_FAILED,-1,Ultrasonic sensor initialization failed!");
+    while (true) {
+      // Stay here forever if Ultrasonic sensor fails to initialize
+      ledMessage("error");
+    }
+  } else {
+    writeToLog("system.csv", String(millis()) + ",ULTRASONIC,INIT_SUCCESS,0,Ultrasonic sensor initialized successfully");
+  }
 
-  // // Initialize motors with pin assignments from main.cpp
-  // setupMotors(MOTOR_STBY, MOTOR_A_PWM, MOTOR_A_IN1, MOTOR_A_IN2, MOTOR_B_PWM, MOTOR_B_IN1, MOTOR_B_IN2);
-  // writeToLog("system.csv", String(millis()) + ",MOTOR,INIT_SUCCESS,0,Motors initialized successfully");
+  // Initialize motors with pin assignments from main.cpp
+  setupMotors(MOTOR_A_IN1, MOTOR_A_IN2, MOTOR_B_IN1, MOTOR_B_IN2);
+  writeToLog("system.csv", String(millis()) + ",MOTOR,INIT_SUCCESS,0,Motors initialized successfully");
 
-  // // Initialize pose logging
-  // setupPoseLogging();
+  // Initialize pose logging
+  setupPoseLogging();
 
-  // // Get target coordinates from SD card
-  // File targetFile = SD.open("/targetCoordinate.csv");
-  // if (targetFile) {
-  //   String line = "";
-  //   bool headerSkipped = false;
+  // Get target coordinates from SD card
+  File targetFile = SD.open("/targetCoordinate.csv");
+  if (targetFile) {
+    String line = "";
+    bool headerSkipped = false;
     
-  //   while (targetFile.available()) {
-  //     line = targetFile.readStringUntil('\n');
-  //     line.trim();
+    while (targetFile.available()) {
+      line = targetFile.readStringUntil('\n');
+      line.trim();
       
-  //     // Skip header line if it exists
-  //     if (!headerSkipped && (line.startsWith("lat") || line.startsWith("Lat") || line.startsWith("LAT"))) {
-  //       headerSkipped = true;
-  //       continue;
-  //     }
+      // Skip header line if it exists
+      if (!headerSkipped && (line.startsWith("lat") || line.startsWith("Lat") || line.startsWith("LAT"))) {
+        headerSkipped = true;
+        continue;
+      }
       
-  //     // Parse CSV line: latitude,longitude
-  //     int commaIndex = line.indexOf(',');
-  //     if (commaIndex > 0) {
-  //       String latStr = line.substring(0, commaIndex);
-  //       String lonStr = line.substring(commaIndex + 1);
+      // Parse CSV line: latitude,longitude
+      int commaIndex = line.indexOf(',');
+      if (commaIndex > 0) {
+        String latStr = line.substring(0, commaIndex);
+        String lonStr = line.substring(commaIndex + 1);
         
-  //       targetCoordinates.latitude = latStr.toDouble();
-  //       targetCoordinates.longitude = lonStr.toDouble();
-  //       targetCoordinates.heading = 0.0; // Not used for target
+        targetCoordinates.latitude = latStr.toDouble();
+        targetCoordinates.longitude = lonStr.toDouble();
+        targetCoordinates.heading = 0.0; // Not used for target
         
-  //       writeToLog("system.csv", String(millis()) + ",TARGET,COORDINATES_LOADED,0,Target coordinates set to " + 
-  //                  String(targetCoordinates.latitude, 6) + "," + String(targetCoordinates.longitude, 6));
-  //       break; // Use first valid line
-  //     }
-  //   }
-  //   targetFile.close();
+        writeToLog("system.csv", String(millis()) + ",TARGET,COORDINATES_LOADED,0,Target coordinates set to " + 
+                   String(targetCoordinates.latitude, 6) + "," + String(targetCoordinates.longitude, 6));
+        break; // Use first valid line
+      }
+    }
+    targetFile.close();
     
-  //   // Validate coordinates are reasonable
-  //   if (targetCoordinates.latitude == 0.0 && targetCoordinates.longitude == 0.0) {
-  //     writeToLog("system.csv", String(millis()) + ",TARGET,COORDINATES_INVALID,-1,Invalid target coordinates (0,0) - check targetCoordiante.csv format");
-  //   }
-  // } else {
-  //   writeToLog("system.csv", String(millis()) + ",TARGET,FILE_NOT_FOUND,-1,targetCoordiante.csv file not found on SD card / Creating default file");
-  //   // Set default coordinates if file not found
-  //   writeLogHeaders("targetCoordinate.csv", "lat,lon");
-  //   writeToLog("targetCoordinate.csv", "0.0,0.0");
-  //   targetCoordinates.latitude = 0.0;
-  //   targetCoordinates.longitude = 0.0;
-  //   targetCoordinates.heading = 0.0;
-  // }
+    // Validate coordinates are reasonable
+    if (targetCoordinates.latitude == 0.0 && targetCoordinates.longitude == 0.0) {
+      writeToLog("system.csv", String(millis()) + ",TARGET,COORDINATES_INVALID,-1,Invalid target coordinates (0,0) - check targetCoordiante.csv format");
+    }
+  } else {
+    writeToLog("system.csv", String(millis()) + ",TARGET,FILE_NOT_FOUND,-1,targetCoordiante.csv file not found on SD card / Creating default file");
+    // Set default coordinates if file not found
+    writeLogHeaders("targetCoordinate.csv", "lat,lon");
+    writeToLog("targetCoordinate.csv", "0.0,0.0");
+    targetCoordinates.latitude = 0.0;
+    targetCoordinates.longitude = 0.0;
+    targetCoordinates.heading = 0.0;
+  }
   
   // Log system startup completion
   state_description = "All systems initialized successfully";
@@ -214,35 +217,33 @@ void loop() {
 
   // Update Sensor data
   // Update BNO055 data
-  // static unsigned long lastBnoUpdate = 0;
-  // if (millis() - lastBnoUpdate >= 100) { // Update BNO055 every 100 ms
-  //   static bool bnoUpdated = false;
-  //   bnoUpdated = updateBno055Data();
-  //   lastBnoUpdate = millis();
-  //   if (bnoUpdated) {
-  //     Bno055Data bnoData = getBno055Data();
-  //   }
-  // }
+  static unsigned long lastBnoUpdate = 0;
+  if (millis() - lastBnoUpdate >= 100) { // Update BNO055 every 100 ms
+    static bool bnoUpdated = false;
+    bnoUpdated = updateBno055Data();
+    lastBnoUpdate = millis();
+    if (bnoUpdated) {
+      Bno055Data bnoData = getBno055Data();
+    }
+  }
 
-  // // Update GPS data
-  // static unsigned long lastGpsUpdate = 0;
-  // if (millis() - lastGpsUpdate >= 1000) { // Update GPS every second
-  //   static bool updated = false;
-  //   updated = updateGps();
-  //   lastGpsUpdate = millis();
-  //   if (updated) {
-  //     GpsData gpsData = getGpsData();
-  //   }
-  // }
+  // Update GPS data
+  static unsigned long lastGpsUpdate = 0;
+  if (millis() - lastGpsUpdate >= 1000) { // Update GPS every second
+    static bool updated = false;
+    updated = updateGps();
+    lastGpsUpdate = millis();
+    if (updated) {
+      GpsData gpsData = getGpsData();
+    }
+  }
 
-  // // get ultrasonic distance
-  // if (state == "CloseIn") {
-  //   static unsigned long lastUltrasonicUpdate = 0;
-  //   if (millis() - lastUltrasonicUpdate >= 200) { // Update Ultrasonic every 200 ms
-  //     float distance = getDistanceCm();
-  //     lastUltrasonicUpdate = millis();
-  //   }
-  // }
+  // get ultrasonic distance
+    static unsigned long lastUltrasonicUpdate = 0;
+    if (millis() - lastUltrasonicUpdate >= 200) { // Update Ultrasonic every 200 ms
+      float distance = getDistanceCm();
+      lastUltrasonicUpdate = millis();
+    }
 
   // // Get current pose estimate
   // static unsigned long lastPoseLog = 0;
@@ -275,29 +276,27 @@ void loop() {
 
   // // Motor control and other operations would go here
 
-  // //some random motor control for testing
-  // static unsigned long motorTestCycle = 0;
-  // static unsigned long lastMotorTestTime = 0;
-  // if (millis() - lastMotorTestTime > 5000) { // every 5 seconds
-  //   lastMotorTestTime = millis();
-  //   if (motorTestCycle == 0) {
-  //     motorTestCycle = 1;
-  //     exitStandby();
-  //     motorWrite('A', 100); // Move forward at half speed
-  //   } else if (motorTestCycle == 1) {
-  //     motorTestCycle = 2;
-  //     motorWrite('A', -100); // Move backward at half speed
-  //     motorWrite('B', 100);  // Turn in place
-  //   } else if (motorTestCycle == 2) {
-  //     motorTestCycle = 3;
-  //     motorWrite('A', 100); // Turn in place
-  //     motorWrite('B', 100);
-  //   } else if (motorTestCycle == 3) {
-  //     motorTestCycle = 0;
-  //     enterStandby(); // Stop motors
-  //   }
-  //   motorTestCycle++;
-  // }
+  //some random motor control for testing
+  static unsigned long motorTestCycle = 0;
+  static unsigned long lastMotorTestTime = 0;
+  if (millis() - lastMotorTestTime > 5000) { // every 5 seconds
+    lastMotorTestTime = millis();
+    Serial.println("Motor test cycle: " + String(motorTestCycle));
+    if (motorTestCycle == 0) {
+      motorWrite('A', 1); // Move forward at half speed
+      motorWrite('B', 0);
+    } else if (motorTestCycle == 1) {
+      motorWrite('A', -1); // Move backward at half speed
+      motorWrite('B', 1);  // Turn in place
+    } else if (motorTestCycle == 2) {
+      motorWrite('A', 1); // Turn in place
+      motorWrite('B', 1);
+    } else if (motorTestCycle >= 3) {
+      stopAllMotors(); // Stop
+      motorTestCycle = 0;
+    }
+    motorTestCycle++;
+  }
   
 
   delay(100); // debounce

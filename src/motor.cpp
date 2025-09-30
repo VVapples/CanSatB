@@ -2,36 +2,26 @@
 #include "sd_logger.h"
 
 // TB6612 Motor Driver Pin Variables (set by setupMotors)
-static int STBY_PIN;
-static int PWMA_PIN;
 static int AIN1_PIN;
 static int AIN2_PIN;
-static int PWMB_PIN;
 static int BIN1_PIN;
 static int BIN2_PIN;
 
-void setupMotors(int stby, int pwmA, int ain1, int ain2, int pwmB, int bin1, int bin2) {
+void setupMotors(int ain1, int ain2, int bin1, int bin2) {
   // Store pin assignments
-  STBY_PIN = stby;
-  PWMA_PIN = pwmA;
   AIN1_PIN = ain1;
   AIN2_PIN = ain2;
-  PWMB_PIN = pwmB;
   BIN1_PIN = bin1;
   BIN2_PIN = bin2;
   
   // Set all pins as outputs
-  pinMode(STBY_PIN, OUTPUT);
-  pinMode(PWMA_PIN, OUTPUT);
   pinMode(AIN1_PIN, OUTPUT);
   pinMode(AIN2_PIN, OUTPUT);
-  pinMode(PWMB_PIN, OUTPUT);
   pinMode(BIN1_PIN, OUTPUT);
   pinMode(BIN2_PIN, OUTPUT);
   
   // Initialize to safe state
   stopAllMotors();
-  exitStandby();  // Make sure we're not in standby
   writeLogHeaders("motor_raw.csv", "timestamp,motor,speed");
 }
 
@@ -50,17 +40,14 @@ void motorWrite(char motor, int speed) {
       // Stop motor A
       digitalWrite(AIN1_PIN, LOW);
       digitalWrite(AIN2_PIN, LOW);
-      analogWrite(PWMA_PIN, 0);
     } else if (forward) {
       // Motor A forward
       digitalWrite(AIN1_PIN, HIGH);
       digitalWrite(AIN2_PIN, LOW);
-      analogWrite(PWMA_PIN, pwmSpeed);
     } else {
       // Motor A reverse
       digitalWrite(AIN1_PIN, LOW);
       digitalWrite(AIN2_PIN, HIGH);
-      analogWrite(PWMA_PIN, pwmSpeed);
     }
     writeToLog("motor_raw.csv", String(millis()) + ",A," + String(speed));
   } 
@@ -70,17 +57,14 @@ void motorWrite(char motor, int speed) {
       // Stop motor B
       digitalWrite(BIN1_PIN, LOW);
       digitalWrite(BIN2_PIN, LOW);
-      analogWrite(PWMB_PIN, 0);
     } else if (forward) {
       // Motor B forward
       digitalWrite(BIN1_PIN, HIGH);
       digitalWrite(BIN2_PIN, LOW);
-      analogWrite(PWMB_PIN, pwmSpeed);
     } else {
       // Motor B reverse
       digitalWrite(BIN1_PIN, LOW);
       digitalWrite(BIN2_PIN, HIGH);
-      analogWrite(PWMB_PIN, pwmSpeed);
     }
     writeToLog("motor_raw.csv", String(millis()) + ",B," + String(speed));
   } 
@@ -92,12 +76,4 @@ void motorWrite(char motor, int speed) {
 void stopAllMotors() {
   motorWrite('A', 0);
   motorWrite('B', 0);
-}
-
-void enterStandby() {
-  digitalWrite(STBY_PIN, LOW);
-}
-
-void exitStandby() {
-  digitalWrite(STBY_PIN, HIGH);
 }

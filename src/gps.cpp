@@ -35,7 +35,7 @@ bool setupGps(int txPin, int rxPin) {
 
 bool updateGps() {
   int loopCount = 0;
-    while (gpsSerial->available() > 0 && loopCount < 500) {
+    while (gpsSerial->available() > 0 && loopCount < 5000) {
         char c = gpsSerial->read();
         if (gps.encode(c)) {
           lastDataReceived = millis();
