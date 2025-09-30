@@ -21,7 +21,8 @@
 
 // Function declarations
 void setupMotors(int ain1, int ain2, int bin1, int bin2);
-void motorWrite(char motor, int speed);
+// void motorWrite(char motor, int speed);
 void stopAllMotors();
+void motorControl(String command, int time_ms = 100);
 
 #endif // MOTOR_H

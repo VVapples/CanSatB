@@ -33,14 +33,31 @@ void dash() {
 }
 
 void ledMessage(String message) {
+    static unsigned long lastSignalTime = 0;
+    if (lastSignalTime && (millis() - lastSignalTime < 2000)) {
+        // Prevent overlapping signals
+        return;
+    }
     if (message == "error") {
         dot();
         writeToLog("led.csv", String(millis()) + ",ERROR_SIGNAL");
     } else if (message == "startup") {
         digitalWrite(LED_PIN, HIGH); // Solid ON
         writeToLog("led.csv", String(millis()) + ",INIT_SIGNAL");
-    } else {
+    } else if (message == "running") {
         dash();
+        dot();
+        dot();
+        writeToLog("led.csv", String(millis()) + ",RUNNING_SIGNAL");
+    } else if (message == "standby") {
+        dash();
+        dash();
+        dash();
+        writeToLog("led.csv", String(millis()) + ",STANDBY_SIGNAL");
+
+    } else {
+        digitalWrite(LED_PIN, LOW); // Solid OFF
         writeToLog("led.csv", String(millis()) + ",RUNNING_SIGNAL");
     }
+    lastSignalTime = millis();
 }

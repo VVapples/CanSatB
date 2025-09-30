@@ -14,14 +14,14 @@
 #include "led.h"
 
 //pins: all in gpio pin numbers
-#define BNO055_SDA_PIN 7 // D0
-#define BNO055_SCL_PIN 8 // D1
+#define BNO055_SDA_PIN 21 // D0
+#define BNO055_SCL_PIN 22 // D1
 
 #define GPS_RX_PIN 17
 #define GPS_TX_PIN 16
 
-#define ULTRASONIC_TRIGGER_PIN   25
-#define ULTRASONIC_ECHO_PIN      26
+#define ULTRASONIC_TRIGGER_PIN   26
+#define ULTRASONIC_ECHO_PIN      25
 
 #define SD_CD_PIN      13
 #define SD_CMD_PIN     23
@@ -41,6 +41,7 @@
 //operation related constants
 static const float CLOSEIN_START_THRESHOLD = 5.0; // in meters
 static const float TARGET_REACHED_THRESHOLD = 2.0; // in meters
+static const float ULTRASONIC_ERROR_THRESHOLD = 5.0; // in cm, distances below this are considered errors
 
 //important variables
 static String state = "";
@@ -82,11 +83,14 @@ Pose targetCoordinates = {
   0.0        // heading (not used for target)
 };
 
+// initialize distance variable
+float distance = -1.0; // in cm, -1 indicates uninitialized or error
+
 void setup() {
   state = "setup";
   state_description = "System is setting up";
   delay(1000); // Allow time for serial monitor to start
-  // Serial.begin(115200);
+  Serial.begin(115200);
   setupLed(LED_PIN);
   ledMessage("startup");
 
@@ -106,7 +110,7 @@ void setup() {
   }
 
   // Other sensor setups
-
+  delay(1000); // Short delay to ensure SD card is ready
   // BNO055
   if (!setupBno055()) {
     state = "error";
@@ -115,6 +119,7 @@ void setup() {
     while (true) {
       // Stay here forever if BNO055 fails to initialize
       ledMessage("error");
+      delay(1000);
     }
   } else {
     writeToLog("system.csv", String(millis()) + ",BNO055,INIT_SUCCESS,0,BNO055 initialized successfully");
@@ -128,6 +133,7 @@ void setup() {
     while (true) {
       // Stay here forever if GPS fails to initialize
       ledMessage("error");
+      delay(1000);
     }
   } else {
     writeToLog("system.csv", String(millis()) + ",GPS,INIT_SUCCESS,0,GPS initialized successfully");
@@ -141,6 +147,7 @@ void setup() {
     while (true) {
       // Stay here forever if Ultrasonic sensor fails to initialize
       ledMessage("error");
+      delay(1000);
     }
   } else {
     writeToLog("system.csv", String(millis()) + ",ULTRASONIC,INIT_SUCCESS,0,Ultrasonic sensor initialized successfully");
@@ -154,6 +161,7 @@ void setup() {
   setupPoseLogging();
 
   // Get target coordinates from SD card
+  delay(1000); //wait till write ends
   File targetFile = SD.open("/targetCoordinate.csv");
   if (targetFile) {
     String line = "";
@@ -241,61 +249,76 @@ void loop() {
   // get ultrasonic distance
     static unsigned long lastUltrasonicUpdate = 0;
     if (millis() - lastUltrasonicUpdate >= 200) { // Update Ultrasonic every 200 ms
-      float distance = getDistanceCm();
+      distance = getDistanceCm();
       lastUltrasonicUpdate = millis();
     }
 
-  // // Get current pose estimate
-  // static unsigned long lastPoseLog = 0;
-  // if (lastGpsUpdate > lastPoseLog || lastBnoUpdate > lastPoseLog) {
-  //   // Get current sensor data and calculate pose
-  //   GpsData currentGpsData = getGpsData();
-  //   Bno055Data currentBnoData = getBno055Data();
+  // Get current pose estimate
+  static unsigned long lastPoseLog = 0;
+  if (lastGpsUpdate > lastPoseLog || lastBnoUpdate > lastPoseLog) {
+    // Get current sensor data and calculate pose
+    GpsData currentGpsData = getGpsData();
+    Bno055Data currentBnoData = getBno055Data();
     
-  //   Pose currentPose = getCurrentPose(currentGpsData, currentBnoData);
-  //   lastPoseLog = millis();
-  // }
+    Pose currentPose = getCurrentPose(currentGpsData, currentBnoData);
+    lastPoseLog = millis();
+  }
 
-  // //state decider
-  // static unsigned long lastStateChangeTime = 0;
-  // if (millis() - lastStateChangeTime > 10000) {  // Evaluate state every 10 seconds
-  //   lastStateChangeTime = millis();
-  //   static double distanceToTarget = calculateDistance(currentPose.latitude, currentPose.longitude, targetCoordinates.latitude, targetCoordinates.longitude);
-  //   if (state == "startup!" && distanceToTarget > CLOSEIN_START_THRESHOLD) {
-  //     state = "approach";
-  //     state_description = "Searching for target - distance to target: " + String(distanceToTarget, 2) + " meters";
-  //     writeToLog("system.csv", String(millis()) + ",STATE,APPROACH,0,Transitioning to APPROACH state - distance to target: " + String(distanceToTarget, 2) + " meters");
-  //   } else if (state == "approach" && distanceToTarget > TARGET_REACHED_THRESHOLD) {
-  //     state = "closeIn";
-  //     state_description = "Approaching target - distance to target: " + String(distanceToTarget, 2) + " meters";
-  //   } else {
-  //     state = "arrived";
-  //     state_description = "Arrived at target location - distance to target: " + String(distanceToTarget, 2) + " meters";
-  //   }
-  // } 
+  //state decider
+  static unsigned long lastStateChangeTime = 0;
+  if (millis() - lastStateChangeTime > 10000) {  // Evaluate state every 10 seconds
+    lastStateChangeTime = millis();
+    static double distanceToTarget = calculateDistance(currentPose.latitude, currentPose.longitude, targetCoordinates.latitude, targetCoordinates.longitude);
+    if (state == "setup") {
+      state = "approach";
+      state_description = "Searching for target - distance to target: " + String(distanceToTarget, 2) + " meters";
+      writeToLog("system.csv", String(millis()) + ",STATE,APPROACH,0,Transitioning to APPROACH state - distance to target: " + String(distanceToTarget, 2) + " meters");
+    } else if (state == "approach" && distanceToTarget <= CLOSEIN_START_THRESHOLD) {
+      state = "closeIn";
+      state_description = "Approaching target - distance to target: " + String(distanceToTarget, 2) + " meters";
+    } else if (state == "closeIn" && ULTRASONIC_ERROR_THRESHOLD < distance && distance <= TARGET_REACHED_THRESHOLD) {
+      state = "arrived";
+      state_description = "Arrived at target location - distance to target: " + String(distanceToTarget, 2) + " meters";
+    }
+  } 
 
   // // Motor control and other operations would go here
 
-  //some random motor control for testing
-  static unsigned long motorTestCycle = 0;
-  static unsigned long lastMotorTestTime = 0;
-  if (millis() - lastMotorTestTime > 5000) { // every 5 seconds
-    lastMotorTestTime = millis();
-    Serial.println("Motor test cycle: " + String(motorTestCycle));
-    if (motorTestCycle == 0) {
-      motorWrite('A', 1); // Move forward at half speed
-      motorWrite('B', 0);
-    } else if (motorTestCycle == 1) {
-      motorWrite('A', -1); // Move backward at half speed
-      motorWrite('B', 1);  // Turn in place
-    } else if (motorTestCycle == 2) {
-      motorWrite('A', 1); // Turn in place
-      motorWrite('B', 1);
-    } else if (motorTestCycle >= 3) {
-      stopAllMotors(); // Stop
-      motorTestCycle = 0;
+  static double currentBearing = calculateBearing(currentPose.latitude, currentPose.longitude, targetCoordinates.latitude, targetCoordinates.longitude);
+  if (state == "approach") {
+    if (abs(currentBearing) > 30) {
+      if (currentBearing > 0) {
+        motorControl("right", 100); // Turn right
+      } else {
+        // Turn left
+        motorControl("left", 100); // Turn left
+      }
+    } else {
+      // Move forward
+      motorControl("forward", 150); // Move forward
     }
-    motorTestCycle++;
+  } else if (state == "closeIn") {
+        static int searchTimes = 0;
+        static bool found = false;
+        while (searchTimes < 10 && !found) {
+
+
+        }
+  } else if (state == "arrived") {
+    motorControl("stop"); // Stop all motors
+  } else {
+    motorControl("stop"); // Default to stopping motors in unknown states
+  }
+
+  //Check End condition
+  if (state == "arrived") {
+    motorControl("stop"); // Stop all motors
+    state = "standby";
+    state_description = "Mission complete, system in standby";
+    while (true) {
+      ledMessage("standby");
+      delay(1000);
+    }
   }
   
 
